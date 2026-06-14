@@ -1,62 +1,94 @@
-import type { CatColor, PetDefinition } from './types'
-import { PetEngine } from './engine'
-import { Locomotion } from './locomotion'
+import { ANIM, DISPLAY, FRAME } from '../pets/cat'
+import type { CatColor } from './types'
+import { CatEngine } from './engine'
 import { PetView } from './view'
 
 export interface PetController {
   setColor(color: CatColor): void
+  setSleepAfter(sec: number): void
 }
 
 /**
- * Bootstraps one pet: wires engine + locomotion + view into a single rAF loop,
- * and manages click-through so only the pet captures the mouse. Returns a
- * controller so the host (settings) can swap colorways at runtime.
+ * Boots one cat: engine + view in a single rAF loop, plus pointer handling for
+ * click (wake/hiss/meow) and floor-constrained dragging (plays run-up).
+ * Only the cat's opaque pixels capture the mouse; everything else clicks through.
  */
 export function startPet(
   stage: HTMLElement,
-  def: PetDefinition,
   sheets: Record<CatColor, string>,
-  initialColor: CatColor
+  color: CatColor,
+  sleepAfterSec: number
 ): PetController {
-  const engine = new PetEngine(def.behavior)
-  const loco = new Locomotion(def.speed, def.displaySize)
-  const view = new PetView(stage, def, sheets[initialColor])
+  const getMaxX = (): number => Math.max(0, window.innerWidth - DISPLAY)
+  const engine = new CatEngine({ startX: Math.random() * getMaxX(), getMaxX, sleepAfter: sleepAfterSec })
+  const view = new PetView(stage, FRAME, DISPLAY, sheets[color])
 
-  view.onClick(() => engine.poke())
-
-  // Toggle native click capture based on whether the cursor is over the pet.
   let capturing = false
-  window.addEventListener('mousemove', (e) => {
+  let down = false
+  let dragging = false
+  let downX = 0
+
+  const setCapture = (on: boolean): void => {
+    if (on === capturing) return
+    capturing = on
+    window.petApi.setIgnoreMouseEvents(!on)
+  }
+  const overPet = (cx: number, cy: number): boolean => {
     const r = view.getHitRect()
-    const over =
-      e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom
-    if (over === capturing) return
-    capturing = over
-    window.petApi.setIgnoreMouseEvents(!over)
+    return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
+  }
+  const toPetX = (cx: number): number => cx - DISPLAY / 2
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (!overPet(e.clientX, e.clientY)) return
+    down = true
+    dragging = false
+    downX = e.clientX
+  })
+  window.addEventListener('pointermove', (e) => {
+    if (down) {
+      if (!dragging && Math.abs(e.clientX - downX) > 4) {
+        dragging = true
+        engine.startDrag()
+      }
+      if (dragging) {
+        engine.dragTo(toPetX(e.clientX))
+        setCapture(true) // hold capture for the whole drag
+      }
+      return
+    }
+    setCapture(overPet(e.clientX, e.clientY))
+  })
+  window.addEventListener('pointerup', (e) => {
+    if (!down) return
+    if (dragging) engine.endDrag()
+    else engine.click()
+    down = false
+    dragging = false
+    setCapture(overPet(e.clientX, e.clientY))
   })
 
   let last = performance.now()
-  let lastPose = ''
+  let lastKey = ''
 
   function frame(now: number): void {
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
 
     engine.tick(dt)
-    loco.update(dt, engine.isMoving())
-
-    if (engine.pose !== lastPose) {
-      view.setPose(engine.pose)
-      lastPose = engine.pose
+    if (engine.animKey !== lastKey) {
+      view.setAnimation(ANIM[engine.animKey])
+      lastKey = engine.animKey
     }
     view.tick(dt)
-    view.setTransform(loco.getX(), loco.getFlip())
+    view.setPosition(engine.x, engine.y)
 
     requestAnimationFrame(frame)
   }
   requestAnimationFrame(frame)
 
   return {
-    setColor: (color) => view.setSheet(sheets[color])
+    setColor: (c) => view.setSheet(sheets[c]),
+    setSleepAfter: (s) => engine.setSleepAfter(s)
   }
 }

@@ -53,10 +53,41 @@ html.mode-settings #root {
   color: #2b2118;
 }
 
+.settings section {
+  margin-bottom: 24px;
+}
+
 .settings h1 {
   font-size: 15px;
   font-weight: 700;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
+}
+
+.pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  padding: 8px 13px;
+  border: 2px solid #e4ddd4;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2b2118;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pill:hover {
+  border-color: #d2c7ba;
+}
+
+.pill.selected {
+  border-color: #d97757;
+  background: #fdeee8;
 }
 
 .swatches {

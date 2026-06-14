@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'fs'
 type CatColor = 'ginger' | 'grey' | 'white'
 interface PetConfig {
   color: CatColor
+  sleepAfterMin: number | null
 }
 
 let overlay: BrowserWindow | null = null
@@ -12,12 +13,15 @@ let settings: BrowserWindow | null = null
 let tray: Tray | null = null
 
 const configPath = (): string => join(app.getPath('userData'), 'config.json')
-let config: PetConfig = { color: 'ginger' }
+let config: PetConfig = { color: 'ginger', sleepAfterMin: 5 }
 
 function loadConfig(): void {
   try {
     const parsed = JSON.parse(readFileSync(configPath(), 'utf-8'))
-    if (parsed && typeof parsed.color === 'string') config = { color: parsed.color }
+    if (parsed && typeof parsed.color === 'string') config.color = parsed.color
+    if (parsed && (parsed.sleepAfterMin === null || typeof parsed.sleepAfterMin === 'number')) {
+      config.sleepAfterMin = parsed.sleepAfterMin
+    }
   } catch {
     // first run / missing file → keep defaults
   }
@@ -78,8 +82,8 @@ function openSettings(): void {
   }
 
   settings = new BrowserWindow({
-    width: 320,
-    height: 260,
+    width: 340,
+    height: 380,
     resizable: false,
     title: 'mac-pet 설정',
     webPreferences: {
@@ -124,11 +128,11 @@ ipcMain.on('set-ignore-mouse', (_e, ignore: boolean) => {
 
 ipcMain.handle('config:get', () => config)
 
-ipcMain.on('config:set-color', (_e, color: CatColor) => {
-  config = { ...config, color }
+ipcMain.on('config:set', (_e, partial: Partial<PetConfig>) => {
+  config = { ...config, ...partial }
   saveConfig()
   for (const w of BrowserWindow.getAllWindows()) {
-    w.webContents.send('config:color', color)
+    w.webContents.send('config:changed', config)
   }
 })
 

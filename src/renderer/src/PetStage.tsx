@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { startPet, type PetController } from './pet/loop'
-import { cat, CAT_SHEETS } from './pets/cat'
+import { CAT_SHEETS } from './pets/cat'
+
+const toSec = (min: number | null): number => (min === null ? Infinity : min * 60)
 
 /**
- * Mount point for the imperative pet loop. Loads the saved colorway from the
- * main process, then subscribes to live color changes from the settings window.
+ * Mount point for the imperative pet loop. Loads the saved config from the main
+ * process, then applies live color / sleep-timer changes from the settings window.
  */
 export function PetStage(): JSX.Element {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -19,8 +21,11 @@ export function PetStage(): JSX.Element {
 
     window.petApi.getConfig().then((cfg) => {
       if (!stageRef.current) return
-      controller = startPet(stageRef.current, cat, CAT_SHEETS, cfg.color)
-      unsubscribe = window.petApi.onColorChange((color) => controller?.setColor(color))
+      controller = startPet(stageRef.current, CAT_SHEETS, cfg.color, toSec(cfg.sleepAfterMin))
+      unsubscribe = window.petApi.onConfigChange((c) => {
+        controller?.setColor(c.color)
+        controller?.setSleepAfter(toSec(c.sleepAfterMin))
+      })
     })
 
     return () => unsubscribe?.()
