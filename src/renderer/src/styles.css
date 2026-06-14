@@ -38,6 +38,57 @@ body,
   transform-origin: bottom center;
 }
 
+/* Drop-to-delete target, shown only while dragging a cat. */
+.trash {
+  position: fixed;
+  left: 50%;
+  bottom: 96px; /* near the bottom where the cats live */
+  transform: translateX(-50%) scale(0.8);
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  background: rgba(40, 40, 46, 0.55);
+  border: 3px dashed rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
+}
+
+.trash.visible {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+
+.trash.hot {
+  background: rgba(214, 69, 69, 0.85);
+  border-color: #fff;
+  transform: translateX(-50%) scale(1.15);
+}
+
+.trash-label {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  background: rgba(40, 40, 46, 0.8);
+  padding: 4px 10px;
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.trash.hot .trash-label {
+  opacity: 1;
+}
+
 /* ===== Settings window ===== */
 html.mode-settings,
 html.mode-settings body,
@@ -66,11 +117,12 @@ html.mode-settings #root {
 .pills {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .pill {
-  padding: 8px 13px;
+  flex: 1;
+  text-align: center;
+  padding: 9px 0;
   border: 2px solid #e4ddd4;
   border-radius: 10px;
   background: #fff;
@@ -90,41 +142,142 @@ html.mode-settings #root {
   background: #fdeee8;
 }
 
-.swatches {
-  display: flex;
-  gap: 12px;
-}
-
-.swatch {
-  flex: 1;
+.cat-rows {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.cat-row {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 6px;
+  gap: 12px;
+  padding: 8px 12px;
   background: #fff;
   border: 2px solid #e4ddd4;
   border-radius: 12px;
-  cursor: pointer;
-  transition: border-color 0.15s, transform 0.1s;
-}
-
-.swatch:hover {
-  transform: translateY(-2px);
-}
-
-.swatch.selected {
-  border-color: #d97757;
-  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.18);
 }
 
 .swatch-preview {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   background-repeat: no-repeat;
+  flex-shrink: 0;
 }
 
-.swatch-label {
+.cat-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stepper button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: #efe7df;
+  color: #2b2118;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.stepper button:hover:not(:disabled) {
+  background: #e2d6c9;
+}
+
+.stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stepper .count {
+  min-width: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 11px;
+  color: #9b8d7f;
+  line-height: 1.4;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  flex: 1;
+  text-align: center;
+  padding: 9px 0;
+  border: 2px solid #e4ddd4;
+  border-radius: 10px;
+  background: #fff;
+  color: #2b2118;
   font-size: 13px;
   font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.action-btn:hover {
+  border-color: #d2c7ba;
+}
+
+.action-btn.toggle.on {
+  border-color: #d97757;
+  background: #fdeee8;
+  color: #a8482f;
+}
+
+.info {
+  font-size: 15px;
+  color: #b6a899;
+  cursor: help;
+}
+
+/* Tooltips (hover) */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: #2b2118;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+[data-tip]:hover::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #2b2118;
+  pointer-events: none;
+  z-index: 10;
 }

@@ -84,6 +84,11 @@ export class PetView {
     this.el.style.transform = `translate(${x}px, ${-y}px)`
   }
 
+  /** Remove this cat's element from the DOM. */
+  destroy(): void {
+    this.el.remove()
+  }
+
   getHitRect(): HitRect {
     const rect = this.canvas.getBoundingClientRect()
     const b = this.contentBox

@@ -1,9 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 export type CatColor = 'ginger' | 'grey' | 'white'
+export type CatCounts = Record<CatColor, number>
+export type Lang = 'ko' | 'en'
 export interface PetConfig {
-  color: CatColor
+  counts: CatCounts
   sleepAfterMin: number | null
+  noWake: boolean
+  lang: Lang
 }
 
 const api = {
@@ -27,6 +31,18 @@ const api = {
     const listener = (_e: unknown, config: PetConfig): void => cb(config)
     ipcRenderer.on('config:changed', listener)
     return () => ipcRenderer.removeListener('config:changed', listener)
+  },
+
+  /** Command: put every cat to sleep right now. */
+  sleepAll(): void {
+    ipcRenderer.send('cmd:sleep-all')
+  },
+
+  /** Subscribe to the "sleep all" command (overlay side). */
+  onSleepAll(cb: () => void): () => void {
+    const listener = (): void => cb()
+    ipcRenderer.on('cmd:sleep-all', listener)
+    return () => ipcRenderer.removeListener('cmd:sleep-all', listener)
   }
 }
 

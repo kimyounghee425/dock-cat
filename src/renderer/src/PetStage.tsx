@@ -1,12 +1,14 @@
 import { useEffect, useRef } from 'react'
-import { startPet, type PetController } from './pet/loop'
+import { PetWorld } from './pet/world'
 import { CAT_SHEETS } from './pets/cat'
+import { STRINGS } from './i18n'
 
 const toSec = (min: number | null): number => (min === null ? Infinity : min * 60)
 
 /**
- * Mount point for the imperative pet loop. Loads the saved config from the main
- * process, then applies live color / sleep-timer changes from the settings window.
+ * Mounts the pet world: spawns cats per the saved counts and keeps them in sync
+ * with live config changes (counts + sleep timer). When a cat is dragged to the
+ * trash, persists the reduced count back to config.
  */
 export function PetStage(): JSX.Element {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -16,19 +18,24 @@ export function PetStage(): JSX.Element {
     if (started.current || !stageRef.current) return
     started.current = true
 
-    let controller: PetController | null = null
-    let unsubscribe: (() => void) | undefined
+    let world: PetWorld | null = null
 
     window.petApi.getConfig().then((cfg) => {
       if (!stageRef.current) return
-      controller = startPet(stageRef.current, CAT_SHEETS, cfg.color, toSec(cfg.sleepAfterMin))
-      unsubscribe = window.petApi.onConfigChange((c) => {
-        controller?.setColor(c.color)
-        controller?.setSleepAfter(toSec(c.sleepAfterMin))
+      world = new PetWorld(stageRef.current, CAT_SHEETS, toSec(cfg.sleepAfterMin))
+      world.setCounts(cfg.counts)
+      world.setNoWake(cfg.noWake)
+      world.setTrashLabel(STRINGS[cfg.lang].giveAway)
+      // a cat was trashed → persist the new counts
+      world.onDelete(() => window.petApi.setConfig({ counts: world!.getCounts() }))
+      window.petApi.onConfigChange((c) => {
+        world?.setCounts(c.counts)
+        world?.setSleepAfter(toSec(c.sleepAfterMin))
+        world?.setNoWake(c.noWake)
+        world?.setTrashLabel(STRINGS[c.lang].giveAway)
       })
+      window.petApi.onSleepAll(() => world?.sleepAll())
     })
-
-    return () => unsubscribe?.()
   }, [])
 
   return <div ref={stageRef} className="pet-stage" />

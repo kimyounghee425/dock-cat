@@ -16,8 +16,8 @@ export const WALK_SPEED = 55 // px/s
 export const RUN_SPEED = 150 // px/s
 
 // Startled leap (on drag-drop) — tweak these to taste:
-export const JUMP_HEIGHT = 55 // px the cat rises at the peak
-export const JUMP_DISTANCE = 75 // px the cat travels sideways
+export const JUMP_HEIGHT = 60 // px the cat rises at the peak
+export const JUMP_DISTANCE = 90 // px the cat travels sideways
 export const JUMP_DUR = 0.5 // seconds the leap takes
 
 /**

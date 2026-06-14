@@ -45,6 +45,8 @@ export class CatEngine {
   private remaining = 0
   private inactivity = 0
   private sleepAfter: number
+  private noWake = false
+  private sleepDrag = false // dragging an asleep cat while "don't wake" is on
   private lastMoving = false
   private queue: Act[] = []
 
@@ -71,6 +73,15 @@ export class CatEngine {
     if (this.mode === 'awake') this.inactivity = 0
   }
 
+  setNoWake(on: boolean): void {
+    this.noWake = on
+  }
+
+  /** Force sleep right now (used by the "sleep all" button). */
+  sleepNow(): void {
+    if (this.mode === 'awake') this.fallAsleep()
+  }
+
   tick(dt: number): void {
     if (this.mode !== 'awake') return
 
@@ -84,7 +95,7 @@ export class CatEngine {
       this.jumpT += dt
       const t = Math.min(1, this.jumpT / this.jumpDur)
       this.x = Math.max(0, Math.min(this.getMaxX(), this.jumpFromX + this.jumpDX * t))
-      this.y = 55 * Math.sin(Math.PI * t) // parabolic hop
+      this.y = JUMP_HEIGHT * Math.sin(Math.PI * t) // parabolic hop
       if (t >= 1) {
         this.jumpActive = false
         this.y = 0
@@ -113,6 +124,7 @@ export class CatEngine {
 
   /** Plain click: wake + hiss if asleep, otherwise a quick meow. */
   click(): void {
+    if (this.mode === 'asleep' && this.noWake) return // "don't wake" is on
     this.inactivity = 0
     this.moving = false
     this.queue = []
@@ -127,11 +139,13 @@ export class CatEngine {
   }
 
   startDrag(): void {
+    // "don't wake" + already asleep → carry it without waking (keep sleep pose)
+    this.sleepDrag = this.noWake && this.mode === 'asleep'
     this.mode = 'dragging'
     this.inactivity = 0
     this.moving = false
     this.queue = []
-    this.animKey = 'run_up'
+    if (!this.sleepDrag) this.animKey = 'run_up'
   }
 
   dragTo(x: number): void {
@@ -141,8 +155,15 @@ export class CatEngine {
 
   /** Put down → startled: a real arcing leap sideways, then bolt away. */
   endDrag(): void {
-    this.mode = 'awake'
     this.inactivity = 0
+    // carried while asleep → just stays asleep at the new spot
+    if (this.sleepDrag) {
+      this.sleepDrag = false
+      this.mode = 'asleep'
+      this.y = 0
+      return
+    }
+    this.mode = 'awake'
     this.facing = Math.random() < 0.5 ? 'left' : 'right'
     const dir = this.facing === 'right' ? 1 : -1
 
@@ -154,9 +175,9 @@ export class CatEngine {
     // arc jump: x handled by the jump arc in tick(), not the moving branch
     this.jumpActive = true
     this.jumpT = 0
-    this.jumpDur = 0.5
+    this.jumpDur = JUMP_DUR
     this.jumpFromX = this.x
-    this.jumpDX = 75 * dir
+    this.jumpDX = JUMP_DISTANCE * dir
     this.moving = false
     this.animKey = `jump_${this.facing}` as AnimKey
     this.remaining = this.jumpDur
