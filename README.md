@@ -19,6 +19,8 @@ nap, and get startled when you toss them around. Pure eye candy for your desktop
 - 🌙 **Batch controls** — "Sleep all", "Wake all", and a "Don't wake" mode.
 - 🌐 **Bilingual & light** — English / 한국어, lives quietly in the menu bar.
 
+![DockCat drag & drop](docs/assets/demo2.gif)
+
 ## Install
 
 1. Download the latest `DockCat-x.y.z-arm64.dmg` from
