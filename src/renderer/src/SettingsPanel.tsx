@@ -11,8 +11,10 @@ const DEFAULT: PetConfig = {
   counts: { ginger: 1, grey: 0, white: 0 },
   sleepAfterMin: 5,
   noWake: false,
-  lang: 'ko'
+  lang: 'en'
 }
+
+const LANG_SHORT: Record<string, string> = { ko: '한', en: 'EN' }
 
 export function SettingsPanel(): JSX.Element {
   const [cfg, setCfg] = useState<PetConfig>(DEFAULT)
@@ -48,6 +50,19 @@ export function SettingsPanel(): JSX.Element {
 
   return (
     <div className="settings">
+      <div className="lang-toggle">
+        {LANGS.map(({ id }) => (
+          <button
+            key={id}
+            className={`lang-btn ${cfg.lang === id ? 'on' : ''}`}
+            onClick={() => update({ lang: id })}
+            type="button"
+          >
+            {LANG_SHORT[id]}
+          </button>
+        ))}
+      </div>
+
       <section>
         <h1>{t.catsCount(total)}</h1>
         <div className="cat-rows">
@@ -114,22 +129,6 @@ export function SettingsPanel(): JSX.Element {
             {t.dontWake}
             {cfg.noWake ? ' ✓' : ''}
           </button>
-        </div>
-      </section>
-
-      <section>
-        <h1>{t.language}</h1>
-        <div className="pills">
-          {LANGS.map(({ id, label }) => (
-            <button
-              key={id}
-              className={`pill ${cfg.lang === id ? 'selected' : ''}`}
-              onClick={() => update({ lang: id })}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
         </div>
       </section>
     </div>

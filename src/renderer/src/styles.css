@@ -99,9 +99,36 @@ html.mode-settings #root {
 }
 
 .settings {
+  position: relative;
   padding: 20px;
   font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
   color: #2b2118;
+}
+
+.lang-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  border: 1.5px solid #e4ddd4;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lang-btn {
+  width: 30px;
+  padding: 4px 0;
+  border: none;
+  background: #fff;
+  color: #9b8d7f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lang-btn.on {
+  background: #d97757;
+  color: #fff;
 }
 
 .settings section {

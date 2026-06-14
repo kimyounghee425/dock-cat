@@ -26,7 +26,7 @@ let config: PetConfig = {
   counts: { ginger: 1, grey: 0, white: 0 },
   sleepAfterMin: 5,
   noWake: false,
-  lang: 'ko'
+  lang: 'en'
 }
 
 const clampCount = (n: unknown): number =>
@@ -51,10 +51,9 @@ function loadConfig(): void {
     }
     if (typeof parsed?.noWake === 'boolean') config.noWake = parsed.noWake
     if (parsed?.lang === 'ko' || parsed?.lang === 'en') config.lang = parsed.lang
-    else config.lang = app.getLocale().toLowerCase().startsWith('ko') ? 'ko' : 'en'
+    // else: keep default (en)
   } catch {
-    // first run / missing file → default language to the system locale
-    config.lang = app.getLocale().toLowerCase().startsWith('ko') ? 'ko' : 'en'
+    // first run / missing file → keep defaults (en)
   }
 }
 
@@ -114,7 +113,7 @@ function openSettings(): void {
 
   settings = new BrowserWindow({
     width: 360,
-    height: 560,
+    height: 480,
     resizable: false,
     title: MAIN_STR[config.lang].title,
     webPreferences: {
