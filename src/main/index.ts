@@ -13,8 +13,8 @@ interface PetConfig {
 }
 
 const MAIN_STR: Record<Lang, { settings: string; quit: string; title: string }> = {
-  ko: { settings: '설정…', quit: '종료', title: 'mac-pet 설정' },
-  en: { settings: 'Settings…', quit: 'Quit', title: 'mac-pet Settings' }
+  ko: { settings: '설정…', quit: '종료', title: 'DockCat 설정' },
+  en: { settings: 'Settings…', quit: 'Quit', title: 'DockCat Settings' }
 }
 
 let overlay: BrowserWindow | null = null
@@ -113,7 +113,7 @@ function openSettings(): void {
 
   settings = new BrowserWindow({
     width: 360,
-    height: 480,
+    height: 580,
     resizable: false,
     title: MAIN_STR[config.lang].title,
     webPreferences: {
@@ -153,7 +153,7 @@ function createTray(): void {
   const icon = nativeImage.createFromDataURL(TRAY_ICON)
   icon.setTemplateImage(false) // keep the cat's colors
   tray = new Tray(icon.resize({ width: 20, height: 20 }))
-  tray.setToolTip('mac-pet')
+  tray.setToolTip('DockCat')
   refreshTrayMenu()
 }
 
@@ -182,6 +182,12 @@ ipcMain.on('config:set', (_e, partial: Partial<PetConfig>) => {
 ipcMain.on('cmd:sleep-all', () => {
   for (const w of BrowserWindow.getAllWindows()) {
     w.webContents.send('cmd:sleep-all')
+  }
+})
+
+ipcMain.on('cmd:wake-all', () => {
+  for (const w of BrowserWindow.getAllWindows()) {
+    w.webContents.send('cmd:wake-all')
   }
 })
 

@@ -38,11 +38,23 @@ const api = {
     ipcRenderer.send('cmd:sleep-all')
   },
 
+  /** Command: wake every sleeping cat right now. */
+  wakeAll(): void {
+    ipcRenderer.send('cmd:wake-all')
+  },
+
   /** Subscribe to the "sleep all" command (overlay side). */
   onSleepAll(cb: () => void): () => void {
     const listener = (): void => cb()
     ipcRenderer.on('cmd:sleep-all', listener)
     return () => ipcRenderer.removeListener('cmd:sleep-all', listener)
+  },
+
+  /** Subscribe to the "wake all" command (overlay side). */
+  onWakeAll(cb: () => void): () => void {
+    const listener = (): void => cb()
+    ipcRenderer.on('cmd:wake-all', listener)
+    return () => ipcRenderer.removeListener('cmd:wake-all', listener)
   }
 }
 

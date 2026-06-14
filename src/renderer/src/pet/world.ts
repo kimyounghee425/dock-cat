@@ -70,6 +70,11 @@ export class PetWorld {
     for (const c of this.cats) c.engine.sleepNow()
   }
 
+  /** Wake every sleeping cat immediately. */
+  wakeAll(): void {
+    for (const c of this.cats) c.engine.wakeNow()
+  }
+
   /** Reconcile live cats to match the requested per-color counts. */
   setCounts(counts: CatCounts): void {
     const colors: CatColor[] = ['ginger', 'grey', 'white']

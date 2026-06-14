@@ -82,6 +82,15 @@ export class CatEngine {
     if (this.mode === 'awake') this.fallAsleep()
   }
 
+  /** Wake right now without a hiss (used by the "wake all" button). */
+  wakeNow(): void {
+    if (this.mode === 'asleep') {
+      this.inactivity = 0
+      this.mode = 'awake'
+      this.startIdle()
+    }
+  }
+
   tick(dt: number): void {
     if (this.mode !== 'awake') return
 

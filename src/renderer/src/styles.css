@@ -243,6 +243,7 @@ html.mode-settings #root {
 .action-row {
   display: flex;
   gap: 8px;
+  margin-bottom: 8px;
 }
 
 .action-btn {
@@ -286,7 +287,11 @@ html.mode-settings #root {
   left: 50%;
   bottom: calc(100% + 8px);
   transform: translateX(-50%);
-  white-space: nowrap;
+  width: max-content;
+  max-width: 160px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
   background: #2b2118;
   color: #fff;
   font-size: 12px;

@@ -35,6 +35,7 @@ export function PetStage(): JSX.Element {
         world?.setTrashLabel(STRINGS[c.lang].giveAway)
       })
       window.petApi.onSleepAll(() => world?.sleepAll())
+      window.petApi.onWakeAll(() => world?.wakeAll())
     })
   }, [])
 

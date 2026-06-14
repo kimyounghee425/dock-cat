@@ -1,7 +1,7 @@
 {
-  "name": "mac-pet",
+  "name": "dock-cat",
   "version": "0.1.0",
-  "description": "Cute desktop pet that roams the bottom of your macOS screen",
+  "description": "DockCat — cute pixel cats that roam the bottom of your macOS screen",
   "main": "./out/main/index.js",
   "author": "",
   "license": "MIT",

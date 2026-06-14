@@ -121,6 +121,16 @@ export function SettingsPanel(): JSX.Element {
             {t.sleepAll}
           </button>
           <button
+            className="action-btn"
+            data-tip={t.tipWakeAll}
+            onClick={() => window.petApi.wakeAll()}
+            type="button"
+          >
+            {t.wakeAll}
+          </button>
+        </div>
+        <div className="action-row">
+          <button
             className={`action-btn toggle ${cfg.noWake ? 'on' : ''}`}
             data-tip={t.tipDontWake}
             onClick={() => update({ noWake: !cfg.noWake })}
