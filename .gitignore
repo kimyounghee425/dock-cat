@@ -1,0 +1,9 @@
+node_modules
+out
+dist
+*.log
+.DS_Store
+
+# Local tooling / agent state
+.omc/
+.claude/
