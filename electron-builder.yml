@@ -1,0 +1,18 @@
+appId: com.dockcat.app
+productName: DockCat
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+mac:
+  target:
+    - dmg
+  category: public.app-category.entertainment
+  # Unsigned for now — local testing / sharing (friends will see a Gatekeeper
+  # warning until we add a Developer ID + notarization). Remove this line once
+  # signing certificates are set up.
+  identity: null
+dmg:
+  title: DockCat

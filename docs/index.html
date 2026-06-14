@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DockCat — cute pixel cats for your Mac</title>
+    <meta
+      name="description"
+      content="DockCat puts cute pixel cats on your macOS desktop. They roam the dock, nap, and react when you poke them."
+    />
+    <link rel="icon" href="assets/sit-ginger.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --cream: #f6f1e7;
+        --card: #fffdf9;
+        --coral: #d97757;
+        --coral-dark: #b5563a;
+        --ink: #2b2118;
+        --muted: #8b7d6e;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+        color: var(--ink);
+        background: var(--cream);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      .pixel {
+        font-family: 'Press Start 2P', monospace;
+      }
+      img {
+        image-rendering: pixelated;
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      /* hero */
+      header {
+        text-align: center;
+        padding: 80px 0 56px;
+      }
+      .walker {
+        width: 256px;
+        height: 256px;
+        margin: 0 auto;
+        background: url(assets/walk-ginger.png) 0 0 / 1536px 256px no-repeat;
+        animation: walk 0.72s steps(6) infinite;
+      }
+      @keyframes walk {
+        to {
+          background-position: -1536px 0;
+        }
+      }
+      .floor {
+        width: 280px;
+        height: 14px;
+        margin: -18px auto 28px;
+        border-radius: 50%;
+        background: rgba(43, 33, 24, 0.08);
+        filter: blur(3px);
+      }
+      h1.logo {
+        font-size: 34px;
+        letter-spacing: 1px;
+        color: var(--coral);
+        text-shadow: 3px 3px 0 rgba(181, 86, 58, 0.18);
+      }
+      .tag {
+        margin: 22px auto 0;
+        max-width: 540px;
+        font-size: 18px;
+        color: var(--ink);
+      }
+      .sub {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .btns {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 32px;
+      }
+      .btn {
+        display: inline-block;
+        padding: 13px 24px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 15px;
+        text-decoration: none;
+        transition: transform 0.12s, box-shadow 0.12s;
+      }
+      .btn:hover {
+        transform: translateY(-2px);
+      }
+      .btn.primary {
+        background: var(--coral);
+        color: #fff;
+        box-shadow: 0 6px 0 var(--coral-dark);
+      }
+      .btn.primary:hover {
+        box-shadow: 0 8px 0 var(--coral-dark);
+      }
+      .btn.ghost {
+        background: var(--card);
+        color: var(--ink);
+        border: 2px solid #e6ddcd;
+      }
+
+      /* sections */
+      section {
+        padding: 56px 0;
+      }
+      h2 {
+        text-align: center;
+        font-size: 22px;
+        margin-bottom: 36px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 18px;
+      }
+      .feat {
+        background: var(--card);
+        border: 2px solid #efe7d8;
+        border-radius: 16px;
+        padding: 22px;
+      }
+      .feat .ico {
+        font-size: 28px;
+        margin-bottom: 10px;
+      }
+      .feat h3 {
+        font-size: 16px;
+        margin-bottom: 6px;
+      }
+      .feat p {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      /* cats */
+      .cats {
+        display: flex;
+        justify-content: center;
+        gap: 48px;
+        flex-wrap: wrap;
+      }
+      .cat {
+        text-align: center;
+      }
+      .cat img {
+        height: 130px;
+      }
+      .cat span {
+        display: block;
+        margin-top: 10px;
+        font-weight: 700;
+        font-size: 14px;
+      }
+
+      footer {
+        text-align: center;
+        padding: 48px 24px 64px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      footer a {
+        color: var(--coral-dark);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <div class="walker"></div>
+        <div class="floor"></div>
+        <h1 class="logo pixel">DockCat</h1>
+        <p class="tag">Cute pixel cats that live at the bottom of your Mac screen.</p>
+        <p class="sub">They wander, groom, nap, and get startled when you toss them. Pure eye candy.</p>
+        <div class="btns">
+          <a class="btn primary" href="https://github.com/kimyounghee425/dock-cat/releases"
+            >Download for macOS</a
+          >
+          <a class="btn ghost" href="https://github.com/kimyounghee425/dock-cat">View on GitHub</a>
+        </div>
+      </div>
+    </header>
+
+    <section>
+      <div class="wrap">
+        <h2>What they do</h2>
+        <div class="grid">
+          <div class="feat">
+            <div class="ico">🐾</div>
+            <h3>Roam the dock</h3>
+            <p>Cats stroll along the bottom of your screen and mostly sit, groom, and chill.</p>
+          </div>
+          <div class="feat">
+            <div class="ico">😴</div>
+            <h3>Naps &amp; hisses</h3>
+            <p>Idle long enough and they curl up to sleep — poke a sleeping cat and it hisses.</p>
+          </div>
+          <div class="feat">
+            <div class="ico">✋</div>
+            <h3>Drag &amp; drop</h3>
+            <p>Pick a cat up and put it anywhere. Drop it on the trash to give it away.</p>
+          </div>
+          <div class="feat">
+            <div class="ico">🐱</div>
+            <h3>Many cats</h3>
+            <p>Three colors, up to three each. Mix and match your little colony.</p>
+          </div>
+          <div class="feat">
+            <div class="ico">🌙</div>
+            <h3>Sleep all / wake all</h3>
+            <p>One click to put the whole colony to bed — or wake everyone up.</p>
+          </div>
+          <div class="feat">
+            <div class="ico">🌐</div>
+            <h3>Light &amp; bilingual</h3>
+            <p>Lives quietly in your menu bar. English &amp; 한국어 built in.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section style="background: #efe7d8">
+      <div class="wrap">
+        <h2>Meet the cats</h2>
+        <div class="cats">
+          <div class="cat">
+            <img src="assets/sit-ginger.png" alt="Ginger cat" />
+            <span>Ginger</span>
+          </div>
+          <div class="cat">
+            <img src="assets/sit-grey.png" alt="Grey cat" />
+            <span>Grey</span>
+          </div>
+          <div class="cat">
+            <img src="assets/sit-white.png" alt="White cat" />
+            <span>White</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        Made with 🐈 ·
+        <a href="https://github.com/kimyounghee425/dock-cat">github.com/kimyounghee425/dock-cat</a>
+      </p>
+      <p style="margin-top: 6px">Cat sprites from an itch.io pixel-art pack.</p>
+    </footer>
+  </body>
+</html>
