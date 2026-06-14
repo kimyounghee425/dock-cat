@@ -1,13 +1,40 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron'
 import { join } from 'path'
+import { readFileSync, writeFileSync } from 'fs'
+
+type CatColor = 'ginger' | 'grey' | 'white'
+interface PetConfig {
+  color: CatColor
+}
 
 let overlay: BrowserWindow | null = null
+let settings: BrowserWindow | null = null
+let tray: Tray | null = null
+
+const configPath = (): string => join(app.getPath('userData'), 'config.json')
+let config: PetConfig = { color: 'ginger' }
+
+function loadConfig(): void {
+  try {
+    const parsed = JSON.parse(readFileSync(configPath(), 'utf-8'))
+    if (parsed && typeof parsed.color === 'string') config = { color: parsed.color }
+  } catch {
+    // first run / missing file → keep defaults
+  }
+}
+
+function saveConfig(): void {
+  try {
+    writeFileSync(configPath(), JSON.stringify(config))
+  } catch {
+    // non-fatal: settings just won't persist this session
+  }
+}
+
+const rendererUrl = process.env['ELECTRON_RENDERER_URL']
 
 function createOverlay(): void {
-  const primary = screen.getPrimaryDisplay()
-  // workArea excludes the Dock and menu bar, so the pet stands on top of the
-  // Dock instead of being hidden behind it.
-  const { x, y, width, height } = primary.workArea
+  const { x, y, width, height } = screen.getPrimaryDisplay().workArea
 
   overlay = new BrowserWindow({
     x,
@@ -22,23 +49,18 @@ function createOverlay(): void {
     skipTaskbar: true,
     fullscreenable: false,
     focusable: false,
-    // The overlay should never grab focus or show window chrome; it is purely visual.
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
   })
 
-  // Sit above normal windows (including most full-screen apps) and on every Space.
   overlay.setAlwaysOnTop(true, 'screen-saver')
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-
-  // Start fully click-through; `forward: true` keeps delivering mousemove so the
-  // renderer can detect when the pointer is over the pet and request capture.
   overlay.setIgnoreMouseEvents(true, { forward: true })
 
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    overlay.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  if (rendererUrl) {
+    overlay.loadURL(rendererUrl)
   } else {
     overlay.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -48,21 +70,79 @@ function createOverlay(): void {
   })
 }
 
-// Renderer toggles click capture: false = capture clicks (pointer over pet),
-// true = pass clicks through to whatever is underneath.
-ipcMain.on('set-ignore-mouse', (_event, ignore: boolean) => {
-  if (!overlay) return
-  overlay.setIgnoreMouseEvents(ignore, { forward: true })
+function openSettings(): void {
+  if (settings) {
+    settings.show()
+    settings.focus()
+    return
+  }
+
+  settings = new BrowserWindow({
+    width: 320,
+    height: 260,
+    resizable: false,
+    title: 'mac-pet 설정',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  if (rendererUrl) {
+    settings.loadURL(`${rendererUrl}#settings`)
+  } else {
+    settings.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'settings' })
+  }
+
+  settings.on('closed', () => {
+    settings = null
+  })
+}
+
+// Monochrome cat-head template icon (auto-adapts to light/dark menu bar).
+const TRAY_ICON =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAsCAYAAAAehFoBAAAA1UlEQVR4nO2VSw7EMAhDIer9r+zZj9qG8CulebvREGxZFiXabL4Hntw3MkQ892gNP8YwJGJNGZpd1oS1pqEVbF8Jj7RASYbhYALWHQfVvc+nfLLDJQ0j2IdYp23CZRjU0DASfIj12iWMJB9iXY8vHUuESD5HkZXgye/VuSntOlyOYXz/30UY56Zw0Stx6e11lTiSkoHX8lnCmvPj0Ve++uN1lRiCGUvKULy91YtMOOTCSA2rP6WLTHVWEo42zZKh1UpEmeYMAx4d5fAHJ7hfgs1mQ3X4Aam9JjZc3lSmAAAAAElFTkSuQmCC'
+
+function createTray(): void {
+  const icon = nativeImage.createFromDataURL(TRAY_ICON)
+  icon.setTemplateImage(true)
+  tray = new Tray(icon.resize({ width: 22, height: 22 }))
+  tray.setToolTip('mac-pet')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '설정…', click: openSettings },
+      { type: 'separator' },
+      { label: '종료', click: () => app.quit() }
+    ])
+  )
+}
+
+// --- IPC ---
+ipcMain.on('set-ignore-mouse', (_e, ignore: boolean) => {
+  overlay?.setIgnoreMouseEvents(ignore, { forward: true })
+})
+
+ipcMain.handle('config:get', () => config)
+
+ipcMain.on('config:set-color', (_e, color: CatColor) => {
+  config = { ...config, color }
+  saveConfig()
+  for (const w of BrowserWindow.getAllWindows()) {
+    w.webContents.send('config:color', color)
+  }
 })
 
 app.whenReady().then(() => {
+  loadConfig()
   createOverlay()
+  createTray()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createOverlay()
   })
 })
 
+// Keep running in the tray even when all windows are closed.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // no-op: the tray keeps the app alive; quit only via the tray menu
 })

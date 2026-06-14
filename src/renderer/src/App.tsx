@@ -1,9 +1,17 @@
+import { useEffect } from 'react'
 import { PetStage } from './PetStage'
+import { SettingsPanel } from './SettingsPanel'
 
 /**
- * Root component. For now it just hosts the pet stage; future settings / pet
- * picker UI lives here (rendered as normal React, separate from the pet loop).
+ * One renderer build, two windows: the transparent overlay (pet) and the
+ * settings window. They're distinguished by the URL hash set in the main process.
  */
 export function App(): JSX.Element {
-  return <PetStage />
+  const isSettings = window.location.hash.replace('#', '') === 'settings'
+
+  useEffect(() => {
+    if (isSettings) document.documentElement.classList.add('mode-settings')
+  }, [isSettings])
+
+  return isSettings ? <SettingsPanel /> : <PetStage />
 }

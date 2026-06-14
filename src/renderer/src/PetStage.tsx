@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { startPet } from './pet/loop'
-import { cat } from './pets/cat'
+import { startPet, type PetController } from './pet/loop'
+import { cat, CAT_SHEETS } from './pets/cat'
 
 /**
- * Mount point for the imperative pet loop. React owns the stage element, but the
- * animation runs outside React (no per-frame re-renders) via startPet().
+ * Mount point for the imperative pet loop. Loads the saved colorway from the
+ * main process, then subscribes to live color changes from the settings window.
  */
 export function PetStage(): JSX.Element {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -12,8 +12,18 @@ export function PetStage(): JSX.Element {
 
   useEffect(() => {
     if (started.current || !stageRef.current) return
-    started.current = true // guard against React StrictMode double-invoke
-    startPet(stageRef.current, cat)
+    started.current = true
+
+    let controller: PetController | null = null
+    let unsubscribe: (() => void) | undefined
+
+    window.petApi.getConfig().then((cfg) => {
+      if (!stageRef.current) return
+      controller = startPet(stageRef.current, cat, CAT_SHEETS, cfg.color)
+      unsubscribe = window.petApi.onColorChange((color) => controller?.setColor(color))
+    })
+
+    return () => unsubscribe?.()
   }, [])
 
   return <div ref={stageRef} className="pet-stage" />
