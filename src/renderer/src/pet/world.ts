@@ -31,6 +31,12 @@ export class PetWorld {
   private active: CatInstance | null = null
   private last = performance.now()
 
+  private rafId = 0
+  private alive = true
+  private onPointerDown: (e: PointerEvent) => void
+  private onPointerMove: (e: PointerEvent) => void
+  private onPointerUp: (e: PointerEvent) => void
+
   constructor(stage: HTMLElement, sheets: Record<CatColor, string>, sleepAfterSec: number) {
     this.stage = stage
     this.sheets = sheets
@@ -41,8 +47,32 @@ export class PetWorld {
     this.trash.innerHTML = '<span class="trash-emoji">🗑</span><span class="trash-label"></span>'
     stage.appendChild(this.trash)
 
-    this.bindPointer()
-    requestAnimationFrame((t) => this.frame(t))
+    const handlers = this.bindPointer()
+    this.onPointerDown = handlers.onPointerDown
+    this.onPointerMove = handlers.onPointerMove
+    this.onPointerUp = handlers.onPointerUp
+    this.stage.addEventListener('pointerdown', this.onPointerDown)
+    window.addEventListener('pointermove', this.onPointerMove)
+    window.addEventListener('pointerup', this.onPointerUp)
+
+    this.rafId = requestAnimationFrame((t) => this.frame(t))
+  }
+
+  /**
+   * Tear down everything this world created: stop the rAF loop, remove the
+   * pointer listeners, and detach every cat + the trash from the DOM. Safe to
+   * call more than once.
+   */
+  destroy(): void {
+    if (!this.alive) return
+    this.alive = false
+    cancelAnimationFrame(this.rafId)
+    this.stage.removeEventListener('pointerdown', this.onPointerDown)
+    window.removeEventListener('pointermove', this.onPointerMove)
+    window.removeEventListener('pointerup', this.onPointerUp)
+    for (const c of this.cats) c.view.destroy()
+    this.cats = []
+    this.trash.remove()
   }
 
   onDelete(cb: () => void): void {
@@ -86,7 +116,7 @@ export class PetWorld {
       }
       while (have > counts[color]) {
         const victim = [...this.cats].reverse().find((c) => c.color === color)
-        if (victim) this.destroy(victim)
+        if (victim) this.removeCat(victim)
         have--
       }
     }
@@ -112,12 +142,16 @@ export class PetWorld {
     this.cats.push({ color, engine, view, lastKey: '' })
   }
 
-  private destroy(cat: CatInstance): void {
+  private removeCat(cat: CatInstance): void {
     cat.view.destroy()
     this.cats = this.cats.filter((c) => c !== cat)
   }
 
-  private bindPointer(): void {
+  private bindPointer(): {
+    onPointerDown: (e: PointerEvent) => void
+    onPointerMove: (e: PointerEvent) => void
+    onPointerUp: (e: PointerEvent) => void
+  } {
     const setCapture = (on: boolean): void => {
       if (on === this.capturing) return
       this.capturing = on
@@ -136,16 +170,16 @@ export class PetWorld {
       return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
     }
 
-    this.stage.addEventListener('pointerdown', (e) => {
+    const onPointerDown = (e: PointerEvent): void => {
       const c = catUnder(e.clientX, e.clientY)
       if (!c) return
       this.down = true
       this.dragging = false
       this.downX = e.clientX
       this.active = c
-    })
+    }
 
-    window.addEventListener('pointermove', (e) => {
+    const onPointerMove = (e: PointerEvent): void => {
       if (this.down && this.active) {
         if (!this.dragging && Math.abs(e.clientX - this.downX) > 4) {
           this.dragging = true
@@ -160,13 +194,13 @@ export class PetWorld {
         return
       }
       setCapture(catUnder(e.clientX, e.clientY) !== null)
-    })
+    }
 
-    window.addEventListener('pointerup', (e) => {
+    const onPointerUp = (e: PointerEvent): void => {
       if (this.down && this.active) {
         if (this.dragging) {
           if (overTrash(e.clientX, e.clientY)) {
-            this.destroy(this.active)
+            this.removeCat(this.active)
             this.onDeleteCb?.()
           } else {
             this.active.engine.endDrag()
@@ -180,10 +214,13 @@ export class PetWorld {
       this.dragging = false
       this.active = null
       setCapture(catUnder(e.clientX, e.clientY) !== null)
-    })
+    }
+
+    return { onPointerDown, onPointerMove, onPointerUp }
   }
 
   private frame(now: number): void {
+    if (!this.alive) return
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
     for (const c of this.cats) {
@@ -195,6 +232,6 @@ export class PetWorld {
       c.view.tick(dt)
       c.view.setPosition(c.engine.x, c.engine.y)
     }
-    requestAnimationFrame((t) => this.frame(t))
+    this.rafId = requestAnimationFrame((t) => this.frame(t))
   }
 }
