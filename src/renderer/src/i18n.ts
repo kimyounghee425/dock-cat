@@ -18,6 +18,8 @@ interface Strings {
   giveAway: string
   startup: string
   launchAtLogin: string
+  food: string
+  foodBowl: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -38,7 +40,9 @@ export const STRINGS: Record<Lang, Strings> = {
     language: '언어',
     giveAway: '분양하기',
     startup: '자동 실행',
-    launchAtLogin: '로그인 시 DockCat 자동 실행'
+    launchAtLogin: '로그인 시 DockCat 자동 실행',
+    food: '먹이',
+    foodBowl: '밥그릇'
   },
   en: {
     catsCount: (n) => `Cats (${n})`,
@@ -57,7 +61,9 @@ export const STRINGS: Record<Lang, Strings> = {
     language: 'Language',
     giveAway: 'Give away',
     startup: 'Startup',
-    launchAtLogin: 'Launch DockCat at login'
+    launchAtLogin: 'Launch DockCat at login',
+    food: 'Food',
+    foodBowl: 'Food bowl'
   }
 }
 

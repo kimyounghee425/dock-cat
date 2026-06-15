@@ -38,7 +38,20 @@ body,
   transform-origin: bottom center;
 }
 
-/* Drop-to-delete target, shown only while dragging a cat. */
+/* Food bowl: a static, bottom-anchored sprite that sits on the floor and can
+   be dragged along x or trashed. Only the bowl itself is clickable. */
+.bowl {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 76px;
+  height: 76px;
+  image-rendering: pixelated;
+  pointer-events: auto;
+  -webkit-user-drag: none;
+}
+
+/* Drop-to-delete target, shown only while dragging a cat or the bowl. */
 .trash {
   position: fixed;
   left: 50%;

@@ -15,6 +15,10 @@ export interface PetConfig {
   lang: Lang
   /** Start DockCat automatically on login. */
   launchAtLogin: boolean
+  /** When true, a draggable food bowl is shown on the floor. */
+  bowlEnabled: boolean
+  /** Floor x of the bowl; null means "default position" (resolved in the renderer). */
+  bowlX: number | null
 }
 
 export const MAX_PER_COLOR = 3
@@ -26,7 +30,9 @@ export const DEFAULT_CONFIG: PetConfig = {
   sleepAfterMin: 5,
   noWake: false,
   lang: 'en',
-  launchAtLogin: false
+  launchAtLogin: false,
+  bowlEnabled: false,
+  bowlX: null
 }
 
 const clampCount = (n: unknown): number =>
@@ -43,6 +49,14 @@ const isFiniteSleep = (v: unknown): v is number | null =>
 /** Strict: only the UI-allowed options [1,5,10,30,null]. */
 const isOptionSleep = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && SLEEP_OPTIONS.includes(v))
+
+/**
+ * bowlX accepts null or any finite number. Screen-width clamping is NOT done
+ * here (the main process doesn't know the screen size) — the renderer/world
+ * clamps when placing the bowl.
+ */
+const isBowlX = (v: unknown): v is number | null =>
+  v === null || (typeof v === 'number' && Number.isFinite(v))
 
 /**
  * Represents a validated IPC partial where counts may be sparse (only the
@@ -86,7 +100,10 @@ export function normalizeConfig(raw: unknown): PetConfig {
     launchAtLogin:
       typeof r.launchAtLogin === 'boolean'
         ? r.launchAtLogin
-        : DEFAULT_CONFIG.launchAtLogin
+        : DEFAULT_CONFIG.launchAtLogin,
+    bowlEnabled:
+      typeof r.bowlEnabled === 'boolean' ? r.bowlEnabled : DEFAULT_CONFIG.bowlEnabled,
+    bowlX: isBowlX(r.bowlX) ? r.bowlX : DEFAULT_CONFIG.bowlX
   }
 }
 
@@ -113,6 +130,8 @@ export function normalizePartialConfig(raw: unknown): PartialPetConfig {
   if (typeof r.noWake === 'boolean') out.noWake = r.noWake
   if (isLang(r.lang)) out.lang = r.lang
   if (typeof r.launchAtLogin === 'boolean') out.launchAtLogin = r.launchAtLogin
+  if (typeof r.bowlEnabled === 'boolean') out.bowlEnabled = r.bowlEnabled
+  if (isBowlX(r.bowlX)) out.bowlX = r.bowlX
 
   return out
 }

@@ -27,14 +27,19 @@ export function PetStage(): JSX.Element {
       world.setCounts(cfg.counts)
       world.setNoWake(cfg.noWake)
       world.setTrashLabel(STRINGS[cfg.lang].giveAway)
+      world.setBowl(cfg.bowlEnabled, cfg.bowlX)
       // a cat was trashed → persist the new counts
       world.onDelete(() => window.petApi.setConfig({ counts: world!.getCounts() }))
+      // bowl dragged → persist its x; bowl trashed → turn the toggle off
+      world.onBowlMove((x) => window.petApi.setConfig({ bowlX: x }))
+      world.onBowlRemove(() => window.petApi.setConfig({ bowlEnabled: false }))
       unsubscribe.push(
         window.petApi.onConfigChange((c) => {
           world?.setCounts(c.counts)
           world?.setSleepAfter(toSec(c.sleepAfterMin))
           world?.setNoWake(c.noWake)
           world?.setTrashLabel(STRINGS[c.lang].giveAway)
+          world?.setBowl(c.bowlEnabled, c.bowlX)
         }),
         window.petApi.onSleepAll(() => world?.sleepAll()),
         window.petApi.onWakeAll(() => world?.wakeAll())
