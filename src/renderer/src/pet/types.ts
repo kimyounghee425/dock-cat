@@ -1,6 +1,9 @@
-export type CatColor = 'ginger' | 'grey' | 'white'
+// Config types + constants live in the shared module; re-export them so
+// existing renderer imports of `./pet/types` keep working.
+export type { CatColor, CatCounts, Lang, PetConfig } from '../../../shared/config'
+export { MAX_PER_COLOR } from '../../../shared/config'
+
 export type Facing = 'left' | 'right'
-export type Lang = 'ko' | 'en'
 
 /** One animation = a row of frames on the 64px-cell sprite sheet. */
 export interface Anim {
@@ -9,18 +12,29 @@ export interface Anim {
   fps: number
 }
 
-/** How many cats of each color exist (0–2 each). */
-export type CatCounts = Record<CatColor, number>
+/**
+ * Everything the engine + world need to drive an animal, bundled as plain data.
+ * Animals differ in sprites/tunables only — behaviour logic is shared — so this
+ * is an injected data definition, not a behaviour-strategy abstraction.
+ */
+export interface PetDefinition {
+  /** Animation registry, keyed by animation name. */
+  anim: Record<string, Anim>
 
-/** Persisted settings. sleepAfterMin = null means "never sleep". */
-export interface PetConfig {
-  counts: CatCounts
-  sleepAfterMin: number | null
-  /** When true, clicking a sleeping cat won't wake it. */
-  noWake: boolean
-  lang: Lang
-  /** Start DockCat automatically on login. */
-  launchAtLogin: boolean
+  // behaviour pools (resolved against `anim` at runtime)
+  calmFront: string[]
+  calmDir: string[]
+  punctuation: string[]
+  sleepStyles: string[]
+
+  // tunables
+  walkSpeed: number
+  runSpeed: number
+  jumpHeight: number
+  jumpDistance: number
+  jumpDur: number
+
+  // sprite geometry
+  frameSize: number
+  displaySize: number
 }
-
-export const MAX_PER_COLOR = 3

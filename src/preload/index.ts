@@ -1,15 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-
-export type CatColor = 'ginger' | 'grey' | 'white'
-export type CatCounts = Record<CatColor, number>
-export type Lang = 'ko' | 'en'
-export interface PetConfig {
-  counts: CatCounts
-  sleepAfterMin: number | null
-  noWake: boolean
-  lang: Lang
-  launchAtLogin: boolean
-}
+import type { PetConfig } from '../shared/config'
 
 const api = {
   /** Clicks pass through (true) or the pet captures them (false). */
