@@ -23,13 +23,17 @@ nap, and get startled when you toss them around. Pure eye candy for your desktop
 
 ## Install
 
-1. Download the latest `DockCat-x.y.z-arm64.dmg` from
-   [Releases](https://github.com/kimyounghee425/dock-cat/releases) (Apple Silicon).
-2. Open the `.dmg` and drag **DockCat** into Applications.
-3. First launch: **right-click → Open** (the app isn't notarized yet, so Gatekeeper
-   shows a warning the first time).
+Grab the latest build from [Releases](https://github.com/kimyounghee425/dock-cat/releases).
 
-Open settings from the cat icon in the menu bar.
+**macOS** (Apple Silicon)
+1. Download `DockCat-x.y.z-arm64.dmg`, open it, drag **DockCat** into Applications.
+2. First launch: **right-click → Open** (not notarized yet, so Gatekeeper warns once).
+
+**Windows** (10/11)
+1. Download `DockCat-x.y.z-setup.exe` and run it.
+2. SmartScreen may warn since it isn't signed — click **More info → Run anyway**.
+
+Open settings from the cat icon in the menu bar (macOS) / system tray (Windows).
 
 ## Build from source
 
