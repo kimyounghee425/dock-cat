@@ -10,10 +10,11 @@ mac:
   target:
     - dmg
   category: public.app-category.entertainment
-  # Unsigned for now — local testing / sharing (friends will see a Gatekeeper
-  # warning until we add a Developer ID + notarization). Remove this line once
-  # signing certificates are set up.
-  identity: null
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
 dmg:
   title: DockCat
 win:
