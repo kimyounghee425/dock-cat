@@ -1,0 +1,38 @@
+name: Build Windows on tag
+
+# When you push a version tag (e.g. v0.1.0) — which GitHub also creates when you
+# publish a release from the UI — this builds the Windows installer and uploads
+# it to that release automatically. (You upload the macOS .dmg yourself.)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build Windows installer
+        run: pnpm dist:win
+
+      - name: Upload installer to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*-setup.exe
+          fail_on_unmatched_files: true

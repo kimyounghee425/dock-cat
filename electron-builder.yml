@@ -16,3 +16,11 @@ mac:
   identity: null
 dmg:
   title: DockCat
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}

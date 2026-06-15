@@ -92,8 +92,13 @@ function createOverlay(): void {
     }
   })
 
-  overlay.setAlwaysOnTop(true, 'screen-saver')
-  overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  if (process.platform === 'darwin') {
+    // macOS-only: highest float level + show on every Space / full-screen app
+    overlay.setAlwaysOnTop(true, 'screen-saver')
+    overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  } else {
+    overlay.setAlwaysOnTop(true)
+  }
   overlay.setIgnoreMouseEvents(true, { forward: true })
 
   if (rendererUrl) {

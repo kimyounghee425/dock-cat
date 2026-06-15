@@ -1,6 +1,6 @@
 {
   "name": "dock-cat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DockCat — cute pixel cats that roam the bottom of your macOS screen",
   "main": "./out/main/index.js",
   "author": "",
@@ -11,7 +11,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "pack": "electron-vite build && electron-builder --dir",
-    "dist:mac": "electron-vite build && electron-builder --mac"
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:win": "electron-vite build && electron-builder --win"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
