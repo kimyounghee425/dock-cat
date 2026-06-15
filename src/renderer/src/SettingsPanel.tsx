@@ -11,7 +11,8 @@ const DEFAULT: PetConfig = {
   counts: { ginger: 1, grey: 0, white: 0 },
   sleepAfterMin: 5,
   noWake: false,
-  lang: 'en'
+  lang: 'en',
+  launchAtLogin: false
 }
 
 const LANG_SHORT: Record<string, string> = { ko: '한', en: 'EN' }
@@ -140,6 +141,20 @@ export function SettingsPanel(): JSX.Element {
             {cfg.noWake ? ' ✓' : ''}
           </button>
         </div>
+      </section>
+
+      <section className="last">
+        <h1>{t.startup}</h1>
+        <button
+          className="setting-row"
+          onClick={() => update({ launchAtLogin: !cfg.launchAtLogin })}
+          type="button"
+        >
+          <span>{t.launchAtLogin}</span>
+          <span className={`switch ${cfg.launchAtLogin ? 'on' : ''}`}>
+            <span className="knob"></span>
+          </span>
+        </button>
       </section>
     </div>
   )

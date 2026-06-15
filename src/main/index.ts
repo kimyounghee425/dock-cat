@@ -10,6 +10,7 @@ interface PetConfig {
   sleepAfterMin: number | null
   noWake: boolean
   lang: Lang
+  launchAtLogin: boolean
 }
 
 const MAIN_STR: Record<Lang, { settings: string; quit: string; title: string }> = {
@@ -26,7 +27,8 @@ let config: PetConfig = {
   counts: { ginger: 1, grey: 0, white: 0 },
   sleepAfterMin: 5,
   noWake: false,
-  lang: 'en'
+  lang: 'en',
+  launchAtLogin: false
 }
 
 const clampCount = (n: unknown): number =>
@@ -50,6 +52,7 @@ function loadConfig(): void {
       config.sleepAfterMin = parsed.sleepAfterMin
     }
     if (typeof parsed?.noWake === 'boolean') config.noWake = parsed.noWake
+    if (typeof parsed?.launchAtLogin === 'boolean') config.launchAtLogin = parsed.launchAtLogin
     if (parsed?.lang === 'ko' || parsed?.lang === 'en') config.lang = parsed.lang
     // else: keep default (en)
   } catch {
@@ -113,7 +116,7 @@ function openSettings(): void {
 
   settings = new BrowserWindow({
     width: 360,
-    height: 580,
+    height: 740,
     resizable: false,
     title: MAIN_STR[config.lang].title,
     webPreferences: {
@@ -170,10 +173,15 @@ ipcMain.on('set-ignore-mouse', (_e, ignore: boolean) => {
 
 ipcMain.handle('config:get', () => config)
 
+function applyLoginItem(): void {
+  app.setLoginItemSettings({ openAtLogin: config.launchAtLogin })
+}
+
 ipcMain.on('config:set', (_e, partial: Partial<PetConfig>) => {
   config = { ...config, ...partial }
   saveConfig()
   if (partial.lang) applyLang()
+  if (typeof partial.launchAtLogin === 'boolean') applyLoginItem()
   for (const w of BrowserWindow.getAllWindows()) {
     w.webContents.send('config:changed', config)
   }

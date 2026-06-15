@@ -16,6 +16,8 @@ interface Strings {
   hint: (max: number) => string
   language: string
   giveAway: string
+  startup: string
+  launchAtLogin: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -34,7 +36,9 @@ export const STRINGS: Record<Lang, Strings> = {
     tipDontWake: '고양이를 클릭하거나 드래그해도 잠에서 깨지 않아요',
     hint: (max) => `색상별 최대 ${max}마리 · 드래그해서 가운데 휴지통에 놓으면 삭제`,
     language: '언어',
-    giveAway: '분양하기'
+    giveAway: '분양하기',
+    startup: '자동 실행',
+    launchAtLogin: '로그인 시 DockCat 자동 실행'
   },
   en: {
     catsCount: (n) => `Cats (${n})`,
@@ -51,7 +55,9 @@ export const STRINGS: Record<Lang, Strings> = {
     tipDontWake: "Clicking or dragging a cat won't wake it",
     hint: (max) => `Up to ${max} per color · drag onto the center trash to remove`,
     language: 'Language',
-    giveAway: 'Give away'
+    giveAway: 'Give away',
+    startup: 'Startup',
+    launchAtLogin: 'Launch DockCat at login'
   }
 }
 

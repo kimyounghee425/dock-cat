@@ -19,6 +19,8 @@ export interface PetConfig {
   /** When true, clicking a sleeping cat won't wake it. */
   noWake: boolean
   lang: Lang
+  /** Start DockCat automatically on login. */
+  launchAtLogin: boolean
 }
 
 export const MAX_PER_COLOR = 3

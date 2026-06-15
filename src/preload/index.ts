@@ -8,6 +8,7 @@ export interface PetConfig {
   sleepAfterMin: number | null
   noWake: boolean
   lang: Lang
+  launchAtLogin: boolean
 }
 
 const api = {
