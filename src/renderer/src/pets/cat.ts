@@ -53,6 +53,12 @@ const ANIM = {
   jump_left: { row: 63, frames: 5, fps: 10 },
   jump_right: { row: 64, frames: 5, fps: 10 },
 
+  // eating (stand + eat; used by feeding Phase C, registered now for B/C)
+  eat_front: { row: 56, frames: 10, fps: 10 },
+  eat_back: { row: 57, frames: 8, fps: 10 },
+  eat_left: { row: 58, frames: 10, fps: 10 },
+  eat_right: { row: 59, frames: 10, fps: 10 },
+
   // sleep (5 styles × left/right, front-facing)
   sleep1_left: { row: 44, frames: 2, fps: 2 },
   sleep1_right: { row: 45, frames: 2, fps: 2 },

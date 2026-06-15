@@ -51,6 +51,19 @@ body,
   -webkit-user-drag: none;
 }
 
+/* Food pellet attached to the cursor while holding food picked from the bowl.
+   Positioned via inline left/top (its center tracks the cursor) and never
+   intercepts the pointer so the feeding drag/click-through stays correct. */
+.pellet {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  z-index: 5;
+}
+
 /* Drop-to-delete target, shown only while dragging a cat or the bowl. */
 .trash {
   position: fixed;

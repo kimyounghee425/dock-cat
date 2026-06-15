@@ -1,6 +1,11 @@
 import type { Facing, PetDefinition } from './types'
 
-type Mode = 'awake' | 'asleep' | 'dragging'
+type Mode = 'awake' | 'asleep' | 'dragging' | 'feeding'
+
+/** Stop hopping once this close to the food target (px). Prevents jitter. */
+const FEED_STOP_THRESHOLD = 30
+/** How far each feeding hop advances toward the target (px). */
+const FEED_HOP_STEP = 70
 interface Act {
   key: string
   dur: number
@@ -37,12 +42,15 @@ export class CatEngine {
   private lastMoving = false
   private queue: Act[] = []
 
-  // jump arc (only used for the startled leap on drop)
+  // jump arc (the startled leap on drop AND each feeding hop reuse this)
   private jumpActive = false
   private jumpT = 0
   private jumpDur = 0
   private jumpFromX = 0
   private jumpDX = 0
+
+  // feeding: target x of the held food (cursor) the cat hops toward & begs under
+  private foodTargetX: number | null = null
 
   constructor(opts: {
     def: PetDefinition
@@ -76,7 +84,13 @@ export class CatEngine {
 
   /** Force sleep right now (used by the "sleep all" button). */
   sleepNow(): void {
-    if (this.mode === 'awake') this.fallAsleep()
+    if (this.mode === 'awake' || this.mode === 'feeding') {
+      // Clear any feeding state so it doesn't linger after the cat falls asleep.
+      this.foodTargetX = null
+      this.jumpActive = false
+      this.y = 0
+      this.fallAsleep()
+    }
   }
 
   /** Wake right now without a hiss (used by the "wake all" button). */
@@ -88,7 +102,116 @@ export class CatEngine {
     }
   }
 
+  /**
+   * Feeding: PetWorld passes the held-food x (cursor) for in-range awake cats,
+   * or null to release. Sleeping/dragged cats ignore it (a no-op) so feeding
+   * never disturbs the "don't wake" / drag flows.
+   *  - non-null: enter `feeding`, hop toward x, beg (on_hind) once close.
+   *  - null while feeding: exit cleanly back to normal autonomous behaviour.
+   */
+  setFoodTarget(x: number | null): void {
+    if (this.mode === 'asleep' || this.mode === 'dragging') return
+    if (x === null) {
+      if (this.mode === 'feeding') {
+        this.foodTargetX = null
+        this.jumpActive = false
+        this.y = 0
+        this.moving = false
+        this.queue = []
+        this.mode = 'awake'
+        this.inactivity = 0
+        this.startIdle()
+      }
+      return
+    }
+    this.foodTargetX = x
+    if (this.mode !== 'feeding') {
+      this.mode = 'feeding'
+      this.moving = false
+      this.queue = []
+      this.jumpActive = false
+      this.y = 0
+      // Decide what to do this frame (hop toward / beg) based on distance.
+      this.feedStep()
+    }
+  }
+
+  /**
+   * Phase C hook (stubbed): walk to a dropped floor pellet and play eat. For
+   * now it just routes through the food-target gather so the signature is wired
+   * up; the actual eat animation + completion callback land in Phase C.
+   */
+  goEat(x: number): void {
+    this.setFoodTarget(x)
+  }
+
+  /** Drive the feeding mode each frame: hop arc, then beg under the target. */
+  private tickFeeding(dt: number): void {
+    if (this.foodTargetX === null) return
+
+    if (this.jumpActive) {
+      this.jumpT += dt
+      const t = Math.min(1, this.jumpT / this.jumpDur)
+      this.x = Math.max(0, Math.min(this.getMaxX(), this.jumpFromX + this.jumpDX * t))
+      this.y = this.def.jumpHeight * Math.sin(Math.PI * t)
+      if (t >= 1) {
+        this.jumpActive = false
+        this.y = 0
+        this.feedStep() // chain the next hop or settle into begging
+      }
+      return
+    }
+
+    // Waiting/begging: keep facing the target side in case the cursor moved.
+    this.remaining -= dt
+    if (this.remaining <= 0) this.feedStep()
+  }
+
+  /**
+   * One feeding decision: if the target is farther than the stop threshold,
+   * start a hop toward it; otherwise hold the begging pose facing the target.
+   * Clamped so hops never overshoot the target or the screen edge (FD6).
+   */
+  private feedStep(): void {
+    if (this.foodTargetX === null) return
+    const max = this.getMaxX()
+    const target = Math.max(0, Math.min(max, this.foodTargetX))
+    const dx = target - this.x
+    const dist = Math.abs(dx)
+
+    if (dist <= FEED_STOP_THRESHOLD) {
+      // Close enough: stand on hind legs and beg, facing the food.
+      // Only flip when dx is clearly nonzero — preserve current facing when the
+      // cursor is directly above the cat (dx === 0) to avoid an arbitrary flip.
+      if (dx > 0) this.facing = 'right'
+      else if (dx < 0) this.facing = 'left'
+      // dx === 0: keep this.facing as-is
+      this.jumpActive = false
+      this.y = 0
+      this.animKey = 'on_hind'
+      // Re-check periodically so a moving cursor re-orients the pose.
+      this.remaining = 0.2
+      return
+    }
+
+    // Hop toward the target by a bounded step (never past it, never off-screen).
+    const dir: Facing = dx >= 0 ? 'right' : 'left'
+    this.facing = dir
+    const step = Math.min(FEED_HOP_STEP, dist)
+    const targetX = Math.max(0, Math.min(max, this.x + step * (dir === 'right' ? 1 : -1)))
+    this.jumpActive = true
+    this.jumpT = 0
+    this.jumpDur = this.def.jumpDur
+    this.jumpFromX = this.x
+    this.jumpDX = targetX - this.x
+    this.animKey = `jump_${dir}`
+  }
+
   tick(dt: number): void {
+    if (this.mode === 'feeding') {
+      this.tickFeeding(dt)
+      return
+    }
     if (this.mode !== 'awake') return
 
     this.inactivity += dt
@@ -130,6 +253,7 @@ export class CatEngine {
 
   /** Plain click: wake + hiss if asleep, otherwise a quick meow. */
   click(): void {
+    if (this.mode === 'feeding') return // begging/gathering ignores a tap
     if (this.mode === 'asleep' && this.noWake) return // "don't wake" is on
     this.inactivity = 0
     this.moving = false
@@ -151,6 +275,10 @@ export class CatEngine {
     this.inactivity = 0
     this.moving = false
     this.queue = []
+    // Dragging a cat overrides any in-progress feeding gather.
+    this.foodTargetX = null
+    this.jumpActive = false
+    this.y = 0
     if (!this.sleepDrag) this.animKey = 'run_up'
   }
 
