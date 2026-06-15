@@ -1,26 +1,26 @@
-import type { Anim, CatColor } from '../pet/types'
+import type { Anim, CatColor, PetDefinition } from '../pet/types'
 import ginger from '../assets/cat-ginger.png'
 import grey from '../assets/cat-grey.png'
 import white from '../assets/cat-white.png'
 
 export const CAT_SHEETS: Record<CatColor, string> = { ginger, grey, white }
 
-export const FRAME = 64
-export const DISPLAY = 128
-export const WALK_SPEED = 55 // px/s
-export const RUN_SPEED = 150 // px/s
+const FRAME = 64
+const DISPLAY = 128
+const WALK_SPEED = 55 // px/s
+const RUN_SPEED = 150 // px/s
 
 // Startled leap (on drag-drop) — tweak these to taste:
-export const JUMP_HEIGHT = 60 // px the cat rises at the peak
-export const JUMP_DISTANCE = 90 // px the cat travels sideways
-export const JUMP_DUR = 0.5 // seconds the leap takes
+const JUMP_HEIGHT = 60 // px the cat rises at the peak
+const JUMP_DISTANCE = 90 // px the cat travels sideways
+const JUMP_DUR = 0.5 // seconds the leap takes
 
 /**
  * Animation registry, mapped from the itch.io sheet (rows verified against the
  * labelled preview). Left/right variants exist as separate rows, so we never
  * mirror — we just play the row that matches the direction.
  */
-export const ANIM = {
+const ANIM = {
   // movement (walk art is mirrored vs its label, so rows are swapped here)
   walk_left: { row: 4, frames: 6, fps: 9 },
   walk_right: { row: 5, frames: 6, fps: 9 },
@@ -76,13 +76,32 @@ export type AnimKey = keyof typeof ANIM
  * Calm idle loops held for 10s+ (front-facing, no direction). These are the
  * cat's default "just chilling" states — repetitive, gentle motions.
  */
-export const CALM_FRONT: AnimKey[] = ['lick_sit', 'lick_lie', 'tailwag_sit_front']
+const CALM_FRONT: AnimKey[] = ['lick_sit', 'lick_lie', 'tailwag_sit_front']
 
 /** Calm directional idle loops — resolved to `${base}_${facing}` at runtime. */
-export const CALM_DIR = ['scratch_sit', 'pawswipe_sit', 'tailwag_lie'] as const
+const CALM_DIR = ['scratch_sit', 'pawswipe_sit', 'tailwag_lie'] as const
 
 /** Brief one-shot "punctuations" played occasionally before settling (front). */
-export const PUNCTUATION: AnimKey[] = ['yawn', 'meow_sit', 'on_hind']
+const PUNCTUATION: AnimKey[] = ['yawn', 'meow_sit', 'on_hind']
 
 /** Sleep style bases — resolved to `${base}_${facing}`. */
-export const SLEEP_STYLES = ['sleep1', 'sleep2', 'sleep3', 'sleep4', 'sleep5'] as const
+const SLEEP_STYLES = ['sleep1', 'sleep2', 'sleep3', 'sleep4', 'sleep5'] as const
+
+/**
+ * The cat as a plain data definition, injected into the engine/world so they
+ * stay animal-agnostic. Adding another animal is just another `PetDefinition`.
+ */
+export const cat: PetDefinition = {
+  anim: ANIM,
+  calmFront: [...CALM_FRONT],
+  calmDir: [...CALM_DIR],
+  punctuation: [...PUNCTUATION],
+  sleepStyles: [...SLEEP_STYLES],
+  walkSpeed: WALK_SPEED,
+  runSpeed: RUN_SPEED,
+  jumpHeight: JUMP_HEIGHT,
+  jumpDistance: JUMP_DISTANCE,
+  jumpDur: JUMP_DUR,
+  frameSize: FRAME,
+  displaySize: DISPLAY
+}

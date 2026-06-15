@@ -1,5 +1,4 @@
-import { ANIM, DISPLAY, FRAME } from '../pets/cat'
-import type { CatColor, CatCounts } from './types'
+import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
 
@@ -17,6 +16,7 @@ interface CatInstance {
  */
 export class PetWorld {
   private stage: HTMLElement
+  private def: PetDefinition
   private sheets: Record<CatColor, string>
   private sleepAfterSec: number
   private cats: CatInstance[] = []
@@ -37,8 +37,14 @@ export class PetWorld {
   private onPointerMove: (e: PointerEvent) => void
   private onPointerUp: (e: PointerEvent) => void
 
-  constructor(stage: HTMLElement, sheets: Record<CatColor, string>, sleepAfterSec: number) {
+  constructor(
+    stage: HTMLElement,
+    def: PetDefinition,
+    sheets: Record<CatColor, string>,
+    sleepAfterSec: number
+  ) {
     this.stage = stage
+    this.def = def
     this.sheets = sheets
     this.sleepAfterSec = sleepAfterSec
 
@@ -129,16 +135,17 @@ export class PetWorld {
   }
 
   // --- internals ---
-  private getMaxX = (): number => Math.max(0, window.innerWidth - DISPLAY)
+  private getMaxX = (): number => Math.max(0, window.innerWidth - this.def.displaySize)
 
   private spawn(color: CatColor): void {
     const engine = new CatEngine({
+      def: this.def,
       startX: Math.random() * this.getMaxX(),
       getMaxX: this.getMaxX,
       sleepAfter: this.sleepAfterSec
     })
     engine.setNoWake(this.noWake)
-    const view = new PetView(this.stage, FRAME, DISPLAY, this.sheets[color])
+    const view = new PetView(this.stage, this.def.frameSize, this.def.displaySize, this.sheets[color])
     this.cats.push({ color, engine, view, lastKey: '' })
   }
 
@@ -187,7 +194,7 @@ export class PetWorld {
           this.trash.classList.add('visible')
         }
         if (this.dragging) {
-          this.active.engine.dragTo(e.clientX - DISPLAY / 2)
+          this.active.engine.dragTo(e.clientX - this.def.displaySize / 2)
           setCapture(true)
           this.trash.classList.toggle('hot', overTrash(e.clientX, e.clientY))
         }
@@ -226,7 +233,8 @@ export class PetWorld {
     for (const c of this.cats) {
       c.engine.tick(dt)
       if (c.engine.animKey !== c.lastKey) {
-        c.view.setAnimation(ANIM[c.engine.animKey])
+        const anim = this.def.anim[c.engine.animKey]
+        if (anim) c.view.setAnimation(anim)
         c.lastKey = c.engine.animKey
       }
       c.view.tick(dt)

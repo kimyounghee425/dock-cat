@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { PetWorld } from './pet/world'
-import { CAT_SHEETS } from './pets/cat'
+import { cat, CAT_SHEETS } from './pets/cat'
 import { STRINGS } from './i18n'
 
 const toSec = (min: number | null): number => (min === null ? Infinity : min * 60)
@@ -23,7 +23,7 @@ export function PetStage(): JSX.Element {
     window.petApi.getConfig().then((cfg) => {
       // Effect was cleaned up before config resolved (e.g. StrictMode remount).
       if (disposed || !stageRef.current) return
-      world = new PetWorld(stageRef.current, CAT_SHEETS, toSec(cfg.sleepAfterMin))
+      world = new PetWorld(stageRef.current, cat, CAT_SHEETS, toSec(cfg.sleepAfterMin))
       world.setCounts(cfg.counts)
       world.setNoWake(cfg.noWake)
       world.setTrashLabel(STRINGS[cfg.lang].giveAway)
