@@ -53,9 +53,8 @@ const ANIM = {
   jump_left: { row: 63, frames: 5, fps: 10 },
   jump_right: { row: 64, frames: 5, fps: 10 },
 
-  // eating (stand + eat; used by feeding Phase C, registered now for B/C)
+  // eating (stand + eat; front/left/right only — back never occurs on a 1-D floor)
   eat_front: { row: 56, frames: 10, fps: 10 },
-  eat_back: { row: 57, frames: 8, fps: 10 },
   eat_left: { row: 58, frames: 10, fps: 10 },
   eat_right: { row: 59, frames: 10, fps: 10 },
 

@@ -11,6 +11,26 @@ interface CatInstance {
   lastKey: string
 }
 
+/**
+ * A pellet dropped on the floor. `assignedCat` is the single cat sent to eat it
+ * (null = waiting for a free cat). Both timers are kept so destroy()/removal can
+ * cancel them cleanly. (FD4/FD5)
+ */
+interface Pellet {
+  el: HTMLImageElement
+  x: number
+  assignedCat: CatInstance | null
+  expireTimer: ReturnType<typeof setTimeout>
+  /** True once the TTL fade started; blocks (re)assignment during the fade-out. */
+  expiring: boolean
+  /**
+   * Timeout id for the 400 ms fade-removal step, set only while expiring.
+   * Stored so destroy() / removePellet() can cancel it if the world tears down
+   * during the fade window (fix for issue #3). (FD5)
+   */
+  fadeTimer: ReturnType<typeof setTimeout> | null
+}
+
 /** On-screen display size of the bowl (the art is a 64px frame). */
 const BOWL_SIZE = 76
 
@@ -22,6 +42,12 @@ const PELLET_SIZE = 20
  * notice held food and hop over to beg. Not user-configurable (per PRD).
  */
 const FOOD_RADIUS = 350
+
+/** Max pellets allowed on the floor at once; a 6th evicts the oldest. (FD5) */
+const MAX_PELLETS = 5
+
+/** A floor pellet auto-expires this many ms after being dropped if uneaten. (FD5) */
+const PELLET_TTL_MS = 30_000
 
 /**
  * Manages every cat on screen: spawning/removing per color counts, a single
@@ -60,6 +86,8 @@ export class PetWorld {
   private holdingFood = false
   /** Cursor-attached pellet element shown while holdingFood is true. */
   private heldPellet: HTMLImageElement | null = null
+  /** Pellets resting on the floor, oldest first (FIFO for max-5 eviction). */
+  private pellets: Pellet[] = []
   /** ESC key handler registered once in the constructor, removed in destroy(). */
   private onKeyDown: (e: KeyboardEvent) => void
   private last = performance.now()
@@ -125,6 +153,7 @@ export class PetWorld {
     window.removeEventListener('pointerup', this.onPointerUp)
     window.removeEventListener('keydown', this.onKeyDown)
     this.clearFeeding() // drop any held pellet + release feeding targets
+    this.clearPellets() // remove floor pellets, clear timers + cancel any eats
     for (const c of this.cats) c.view.destroy()
     this.cats = []
     this.removeBowl()
@@ -187,6 +216,11 @@ export class PetWorld {
   /** Put every cat to sleep immediately. */
   sleepAll(): void {
     for (const c of this.cats) c.engine.sleepNow()
+    // FD4: any cat that was eating is now asleep — free its pellet so another
+    // (awake) cat can be assigned to it instead.
+    for (const p of this.pellets) {
+      if (p.assignedCat && p.assignedCat.engine.isAsleep()) p.assignedCat = null
+    }
   }
 
   /** Wake every sleeping cat immediately. */
@@ -233,6 +267,15 @@ export class PetWorld {
   }
 
   private removeCat(cat: CatInstance): void {
+    // FD4: if this cat was assigned to a pellet and mid-eat, cancelEat() first so
+    // the orphaned onEatenCb closure is dropped before we lose the reference.
+    // Then null the assignment so the pellet becomes reassignable.
+    for (const p of this.pellets) {
+      if (p.assignedCat === cat) {
+        cat.engine.cancelEat() // drops onEatenCb; no-op if not eating
+        p.assignedCat = null
+      }
+    }
     cat.view.destroy()
     this.cats = this.cats.filter((c) => c !== cat)
   }
@@ -330,6 +373,122 @@ export class PetWorld {
     for (const c of this.cats) c.engine.setFoodTarget(null)
   }
 
+  /**
+   * Drop a floor pellet at cursor x (bottom-anchored). Enforces the max-5 cap by
+   * evicting the oldest (which reverts its eater), arms the 30s expiry timer, and
+   * immediately tries to assign the nearest free cat. (FD5)
+   */
+  private dropPellet(cursorX: number): void {
+    // Enforce the cap BEFORE adding so we never momentarily exceed it.
+    while (this.pellets.length >= MAX_PELLETS) {
+      this.removePellet(this.pellets[0]) // oldest first (FIFO)
+    }
+    const x = Math.max(0, Math.min(window.innerWidth, cursorX))
+    const el = document.createElement('img')
+    el.className = 'pellet-floor'
+    el.src = pelletPng
+    el.draggable = false
+    el.style.left = `${x - PELLET_SIZE / 2}px`
+    this.stage.appendChild(el)
+    const pellet: Pellet = {
+      el,
+      x,
+      assignedCat: null,
+      expireTimer: setTimeout(() => this.expirePellet(pellet), PELLET_TTL_MS),
+      expiring: false,
+      fadeTimer: null  // set by expirePellet() once the 30 s TTL fires
+    }
+    this.pellets.push(pellet)
+    this.assignPellets()
+  }
+
+  /**
+   * For every unassigned pellet, try to send the nearest free awake cat to eat
+   * it. A cat already assigned to another pellet (or eating) is skipped, so no
+   * double-assignment (FD4). Called when a pellet drops and every frame so a
+   * pellet that couldn't be assigned yet gets picked up once a cat frees.
+   */
+  private assignPellets(): void {
+    // Build the taken-cats set once and update it incrementally as we assign,
+    // so O(P) instead of O(P²) and each newly-assigned cat is excluded for
+    // subsequent pellets in the same pass.
+    const taken = new Set<CatInstance>(
+      this.pellets.map((p) => p.assignedCat).filter((c): c is CatInstance => c !== null)
+    )
+    for (const pellet of this.pellets) {
+      if (pellet.assignedCat || pellet.expiring) continue
+      let best: CatInstance | null = null
+      let bestDist = Infinity
+      for (const c of this.cats) {
+        if (!c.engine.isFreeToEat() || taken.has(c)) continue
+        const catX = c.engine.x + this.def.displaySize / 2
+        const dist = Math.abs(catX - pellet.x)
+        if (dist < bestDist) {
+          bestDist = dist
+          best = c
+        }
+      }
+      if (best) {
+        pellet.assignedCat = best
+        taken.add(best) // exclude from subsequent pellets in this pass
+        // On eat completion: remove the pellet (also frees the cat ref). The
+        // engine resets itself to autonomous before firing this.
+        best.engine.goEat(pellet.x, () => this.removePellet(pellet))
+      }
+      // No free cat → leave unassigned; a later assignPellets() tick retries.
+    }
+  }
+
+  /**
+   * Remove a floor pellet: clear its expiry timer, tell its assigned cat to stop
+   * eating (revert cleanly), drop it from the array, and detach the element. Safe
+   * to call once per pellet. (FD4/FD5)
+   */
+  private removePellet(pellet: Pellet): void {
+    const idx = this.pellets.indexOf(pellet)
+    if (idx === -1) return // already removed
+    this.pellets.splice(idx, 1)
+    clearTimeout(pellet.expireTimer)
+    // Cancel the fade-removal timer if destroy() runs during the 400 ms window
+    // so the callback never fires on a dead world. (fix #3)
+    if (pellet.fadeTimer !== null) clearTimeout(pellet.fadeTimer)
+    // If a cat was mid-eat on this pellet, revert it (the eat completion callback
+    // won't fire because we removed the pellet first). When the pellet was
+    // removed BY that callback the cat has already reset itself, so cancelEat is
+    // a no-op (mode is no longer 'eating').
+    if (pellet.assignedCat) pellet.assignedCat.engine.cancelEat()
+    pellet.el.remove()
+  }
+
+  /** 30s TTL elapsed: fade the pellet out (FD11), then remove it. */
+  private expirePellet(pellet: Pellet): void {
+    if (this.pellets.indexOf(pellet) === -1 || pellet.expiring) return
+    pellet.expiring = true // block reassignment while it fades out
+    // Visual feedback: fade, then remove after the CSS transition (400 ms).
+    pellet.el.classList.add('pellet-floor--expiring')
+    // Free its eater immediately so the cat doesn't keep eating a fading pellet.
+    if (pellet.assignedCat) {
+      pellet.assignedCat.engine.cancelEat()
+      pellet.assignedCat = null
+    }
+    // Store the id so removePellet / destroy() can cancel it if the world tears
+    // down during the fade window — prevents callback on a dead world. (fix #3)
+    pellet.fadeTimer = setTimeout(() => this.removePellet(pellet), 400)
+  }
+
+  /** Remove every floor pellet + clear timers + revert eaters (destroy/teardown). */
+  private clearPellets(): void {
+    // Copy first: removePellet mutates this.pellets.
+    for (const pellet of [...this.pellets]) this.removePellet(pellet)
+  }
+
+  /** Free any pellet assigned to this cat (used before drag overrides its eat). */
+  private unassignCat(cat: CatInstance): void {
+    for (const p of this.pellets) {
+      if (p.assignedCat === cat) p.assignedCat = null
+    }
+  }
+
   private bindPointer(): {
     onPointerDown: (e: PointerEvent) => void
     onPointerMove: (e: PointerEvent) => void
@@ -362,14 +521,17 @@ export class PetWorld {
       catUnder(cx, cy) !== null || bowlUnder(cx, cy)
 
     const onPointerDown = (e: PointerEvent): void => {
-      // --- While holding food, a click anywhere (not a drag) ends the hold. ---
-      // We record the down position here; onPointerUp decides click vs drag.
+      // --- While holding food, a click drops a pellet (or ends the hold if it
+      // lands on the bowl). We record the down position + whether it started on
+      // the bowl here; onPointerUp decides click vs drag and acts. ---
       if (this.holdingFood) {
         this.down = true
         this.dragging = false
         this.downX = e.clientX
         this.active = null
-        this.bowlActive = false
+        // Reuse bowlActive to remember "this click began on the bowl" so the up
+        // handler can end the hold instead of dropping a pellet there.
+        this.bowlActive = this.bowl !== null && bowlUnder(e.clientX, e.clientY)
         // Don't let bowl or cat logic below run — the gesture belongs to feeding.
         return
       }
@@ -409,6 +571,9 @@ export class PetWorld {
       if (this.down && this.active) {
         if (!this.dragging && Math.abs(e.clientX - this.downX) > 4) {
           this.dragging = true
+          // FD4: grabbing a cat that was going to / eating a pellet frees that
+          // pellet so it can be reassigned (startDrag clears the cat's eat state).
+          this.unassignCat(this.active)
           this.active.engine.startDrag()
           this.trash.classList.add('visible')
         }
@@ -440,17 +605,30 @@ export class PetWorld {
     }
 
     const onPointerUp = (e: PointerEvent): void => {
-      // --- While holding food: any pointer-up ends the hold. ---
-      // onPointerMove never sets this.dragging while holdingFood (the holdingFood
-      // branch returns early), so this.dragging is always false here — both a
-      // clean click and a drag-then-release while holding arrive as !dragging and
-      // end the hold identically. No stuck state possible.
+      // --- While holding food: a click drops a pellet; clicking the bowl ends
+      // the hold. ---
+      // Holding end-condition (chosen): each clean click while holding drops one
+      // floor pellet and KEEPS holding (PRD "무한 공급·여러개"), so the user can
+      // rapidly drop several. The hold ends only via (a) clicking the bowl again
+      // or (b) ESC. onPointerMove returns early while holding, so this.dragging is
+      // always false here — there is no drag-to-reposition gesture mid-hold.
       if (this.holdingFood && this.down) {
-        // Phase C hook: drop a floor pellet at e.clientX and assign nearest free cat.
-        this.clearFeeding()
-        setCapture(overInteractive(e.clientX, e.clientY))
+        const startedOnBowl = this.bowlActive
+        // If the click ended on the bowl too, treat it as "put the food back" →
+        // end the hold. Otherwise drop a pellet at the cursor x and keep holding.
+        if (startedOnBowl && this.bowl && bowlUnder(e.clientX, e.clientY)) {
+          this.clearFeeding()
+        } else {
+          this.dropPellet(e.clientX)
+          // Stay in holding mode: refresh the gather pass for the cats that are
+          // still begging the (unchanged) cursor position.
+          this.updateFoodTargets(e.clientX)
+        }
         this.down = false
         this.dragging = false
+        this.bowlActive = false
+        // Keep capture while still holding so subsequent clicks/moves register.
+        setCapture(this.holdingFood ? true : overInteractive(e.clientX, e.clientY))
         return
       }
 
@@ -502,6 +680,10 @@ export class PetWorld {
     if (!this.alive) return
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
+    // Retry assignment for any pellet still waiting for a free cat (a cat may
+    // have just finished eating, woken, or been put down). Cheap no-op when no
+    // pellet is unassigned. (FD4 re-attempt-each-tick)
+    if (this.pellets.some((p) => !p.assignedCat && !p.expiring)) this.assignPellets()
     for (const c of this.cats) {
       c.engine.tick(dt)
       if (c.engine.animKey !== c.lastKey) {
