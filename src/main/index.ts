@@ -1,17 +1,14 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, Tray } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
-
-type CatColor = 'ginger' | 'grey' | 'white'
-type CatCounts = Record<CatColor, number>
-type Lang = 'ko' | 'en'
-interface PetConfig {
-  counts: CatCounts
-  sleepAfterMin: number | null
-  noWake: boolean
-  lang: Lang
-  launchAtLogin: boolean
-}
+import {
+  DEFAULT_CONFIG,
+  normalizeConfig,
+  normalizePartialConfig,
+  type Lang,
+  type PetConfig,
+  type PartialPetConfig
+} from '../shared/config'
 
 const MAIN_STR: Record<Lang, { settings: string; quit: string; title: string }> = {
   ko: { settings: '설정…', quit: '종료', title: 'DockCat 설정' },
@@ -23,38 +20,12 @@ let settings: BrowserWindow | null = null
 let tray: Tray | null = null
 
 const configPath = (): string => join(app.getPath('userData'), 'config.json')
-let config: PetConfig = {
-  counts: { ginger: 1, grey: 0, white: 0 },
-  sleepAfterMin: 5,
-  noWake: false,
-  lang: 'en',
-  launchAtLogin: false
-}
-
-const clampCount = (n: unknown): number =>
-  typeof n === 'number' ? Math.max(0, Math.min(3, Math.round(n))) : 0
+let config: PetConfig = { ...DEFAULT_CONFIG }
 
 function loadConfig(): void {
   try {
     const parsed = JSON.parse(readFileSync(configPath(), 'utf-8'))
-    if (parsed?.counts) {
-      config.counts = {
-        ginger: clampCount(parsed.counts.ginger),
-        grey: clampCount(parsed.counts.grey),
-        white: clampCount(parsed.counts.white)
-      }
-    } else if (typeof parsed?.color === 'string') {
-      // migrate old single-color config
-      config.counts = { ginger: 0, grey: 0, white: 0 }
-      config.counts[parsed.color as CatColor] = 1
-    }
-    if (parsed && (parsed.sleepAfterMin === null || typeof parsed.sleepAfterMin === 'number')) {
-      config.sleepAfterMin = parsed.sleepAfterMin
-    }
-    if (typeof parsed?.noWake === 'boolean') config.noWake = parsed.noWake
-    if (typeof parsed?.launchAtLogin === 'boolean') config.launchAtLogin = parsed.launchAtLogin
-    if (parsed?.lang === 'ko' || parsed?.lang === 'en') config.lang = parsed.lang
-    // else: keep default (en)
+    config = normalizeConfig(parsed)
   } catch {
     // first run / missing file → keep defaults (en)
   }
@@ -182,8 +153,13 @@ function applyLoginItem(): void {
   app.setLoginItemSettings({ openAtLogin: config.launchAtLogin })
 }
 
-ipcMain.on('config:set', (_e, partial: Partial<PetConfig>) => {
-  config = { ...config, ...partial }
+ipcMain.on('config:set', (_e, raw: unknown) => {
+  const partial: PartialPetConfig = normalizePartialConfig(raw)
+  config = {
+    ...config,
+    ...partial,
+    counts: partial.counts ? { ...config.counts, ...partial.counts } : config.counts
+  }
   saveConfig()
   if (partial.lang) applyLang()
   if (typeof partial.launchAtLogin === 'boolean') applyLoginItem()

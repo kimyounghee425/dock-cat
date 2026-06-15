@@ -1,6 +1,9 @@
-export type CatColor = 'ginger' | 'grey' | 'white'
+// Config types + constants live in the shared module; re-export them so
+// existing renderer imports of `./pet/types` keep working.
+export type { CatColor, CatCounts, Lang, PetConfig } from '../../../shared/config'
+export { MAX_PER_COLOR } from '../../../shared/config'
+
 export type Facing = 'left' | 'right'
-export type Lang = 'ko' | 'en'
 
 /** One animation = a row of frames on the 64px-cell sprite sheet. */
 export interface Anim {
@@ -8,19 +11,3 @@ export interface Anim {
   frames: number
   fps: number
 }
-
-/** How many cats of each color exist (0–2 each). */
-export type CatCounts = Record<CatColor, number>
-
-/** Persisted settings. sleepAfterMin = null means "never sleep". */
-export interface PetConfig {
-  counts: CatCounts
-  sleepAfterMin: number | null
-  /** When true, clicking a sleeping cat won't wake it. */
-  noWake: boolean
-  lang: Lang
-  /** Start DockCat automatically on login. */
-  launchAtLogin: boolean
-}
-
-export const MAX_PER_COLOR = 3

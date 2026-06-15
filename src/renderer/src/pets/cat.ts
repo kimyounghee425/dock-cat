@@ -4,11 +4,6 @@ import grey from '../assets/cat-grey.png'
 import white from '../assets/cat-white.png'
 
 export const CAT_SHEETS: Record<CatColor, string> = { ginger, grey, white }
-export const CAT_COLORS: { id: CatColor; label: string }[] = [
-  { id: 'ginger', label: '진저' },
-  { id: 'grey', label: '회색' },
-  { id: 'white', label: '흰색' }
-]
 
 export const FRAME = 64
 export const DISPLAY = 128

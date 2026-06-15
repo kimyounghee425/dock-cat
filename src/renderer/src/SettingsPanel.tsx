@@ -1,24 +1,13 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import type { CatColor, PetConfig } from './pet/types'
-import { MAX_PER_COLOR } from './pet/types'
+import { CAT_COLORS, DEFAULT_CONFIG, MAX_PER_COLOR, SLEEP_OPTIONS } from '../../shared/config'
 import { CAT_SHEETS } from './pets/cat'
 import { LANGS, STRINGS } from './i18n'
-
-const COLORS: CatColor[] = ['ginger', 'grey', 'white']
-const SLEEP_VALUES: (number | null)[] = [1, 5, 10, 30, null]
-
-const DEFAULT: PetConfig = {
-  counts: { ginger: 1, grey: 0, white: 0 },
-  sleepAfterMin: 5,
-  noWake: false,
-  lang: 'en',
-  launchAtLogin: false
-}
 
 const LANG_SHORT: Record<string, string> = { ko: '한', en: 'EN' }
 
 export function SettingsPanel(): JSX.Element {
-  const [cfg, setCfg] = useState<PetConfig>(DEFAULT)
+  const [cfg, setCfg] = useState<PetConfig>(DEFAULT_CONFIG)
 
   useEffect(() => {
     window.petApi.getConfig().then(setCfg)
@@ -67,7 +56,7 @@ export function SettingsPanel(): JSX.Element {
       <section>
         <h1>{t.catsCount(total)}</h1>
         <div className="cat-rows">
-          {COLORS.map((id) => (
+          {CAT_COLORS.map((id) => (
             <div className="cat-row" key={id}>
               <span className="swatch-preview" style={cropStyle(id)} />
               <span className="cat-name">{t.color[id]}</span>
@@ -97,7 +86,7 @@ export function SettingsPanel(): JSX.Element {
       <section>
         <h1>{t.sleepAfter}</h1>
         <div className="pills">
-          {SLEEP_VALUES.map((value) => (
+          {SLEEP_OPTIONS.map((value) => (
             <button
               key={String(value)}
               className={`pill ${cfg.sleepAfterMin === value ? 'selected' : ''}`}
