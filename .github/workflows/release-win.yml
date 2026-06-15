@@ -29,7 +29,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build Windows installer
-        run: pnpm dist:win
+        # --publish never: just build the .exe; the upload step below handles it
+        run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --win --publish never
 
       - name: Upload installer to the release
         uses: softprops/action-gh-release@v2
