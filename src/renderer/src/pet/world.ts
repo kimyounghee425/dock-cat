@@ -118,7 +118,11 @@ export class PetWorld {
     this.onPointerDown = handlers.onPointerDown
     this.onPointerMove = handlers.onPointerMove
     this.onPointerUp = handlers.onPointerUp
-    this.stage.addEventListener('pointerdown', this.onPointerDown)
+    // pointerdown is on window (not the stage): the stage and the held pellet are
+    // both pointer-events:none, so a click over an empty (high) area never reaches
+    // a stage listener — its target is #root, the stage's PARENT, which doesn't
+    // bubble down. window catches it regardless, so dropping food works anywhere.
+    window.addEventListener('pointerdown', this.onPointerDown)
     window.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
 
@@ -148,7 +152,7 @@ export class PetWorld {
     if (!this.alive) return
     this.alive = false
     cancelAnimationFrame(this.rafId)
-    this.stage.removeEventListener('pointerdown', this.onPointerDown)
+    window.removeEventListener('pointerdown', this.onPointerDown)
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
     window.removeEventListener('keydown', this.onKeyDown)
@@ -346,15 +350,25 @@ export class PetWorld {
    * inside the engine, so this is membership-by-x only. Recomputed every move.
    */
   private updateFoodTargets(cursorX: number): void {
+    const center = this.def.displaySize / 2
+    // Every awake/feeding cat within range gathers; the rest are released.
+    const inRange = this.cats.filter(
+      (c) => c.engine.isFreeToEat() && Math.abs(c.engine.x + center - cursorX) <= FOOD_RADIUS
+    )
+    const gathering = new Set(inRange)
     for (const c of this.cats) {
-      // Compare against the cat's sprite center for a fair radius test.
-      const catX = c.engine.x + this.def.displaySize / 2
-      if (Math.abs(catX - cursorX) <= FOOD_RADIUS) {
-        c.engine.setFoodTarget(cursorX)
-      } else {
-        c.engine.setFoodTarget(null)
-      }
+      if (!gathering.has(c)) c.engine.setFoodTarget(null)
     }
+    // Fan the gatherers out around the cursor (sorted by current x so they don't
+    // cross over) instead of stacking on the same spot — otherwise N cats pile
+    // onto one x and look like a single cat.
+    inRange.sort((a, b) => a.engine.x - b.engine.x)
+    const spacing = this.def.displaySize * 0.7
+    const n = inRange.length
+    inRange.forEach((c, i) => {
+      const offset = (i - (n - 1) / 2) * spacing
+      c.engine.setFoodTarget(cursorX + offset)
+    })
   }
 
   /**
@@ -378,7 +392,7 @@ export class PetWorld {
    * evicting the oldest (which reverts its eater), arms the 30s expiry timer, and
    * immediately tries to assign the nearest free cat. (FD5)
    */
-  private dropPellet(cursorX: number): void {
+  private dropPellet(cursorX: number, cursorY: number): void {
     // Enforce the cap BEFORE adding so we never momentarily exceed it.
     while (this.pellets.length >= MAX_PELLETS) {
       this.removePellet(this.pellets[0]) // oldest first (FIFO)
@@ -389,7 +403,16 @@ export class PetWorld {
     el.src = pelletPng
     el.draggable = false
     el.style.left = `${x - PELLET_SIZE / 2}px`
+    // Drop animation: start at the cursor height, then fall to the floor (슝).
+    const restTop = window.innerHeight - PELLET_SIZE
+    const dy = Math.min(0, cursorY - restTop)
+    el.style.transition = 'none'
+    el.style.transform = `translateY(${dy}px)`
     this.stage.appendChild(el)
+    requestAnimationFrame(() => {
+      el.style.transition = '' // back to the stylesheet (opacity + transform)
+      el.style.transform = 'translateY(0)'
+    })
     const pellet: Pellet = {
       el,
       x,
@@ -619,7 +642,7 @@ export class PetWorld {
         if (startedOnBowl && this.bowl && bowlUnder(e.clientX, e.clientY)) {
           this.clearFeeding()
         } else {
-          this.dropPellet(e.clientX)
+          this.dropPellet(e.clientX, e.clientY)
           // Stay in holding mode: refresh the gather pass for the cats that are
           // still begging the (unchanged) cursor position.
           this.updateFoodTargets(e.clientX)

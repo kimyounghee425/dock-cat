@@ -76,7 +76,7 @@ body,
   pointer-events: none;
   -webkit-user-drag: none;
   z-index: 4;
-  transition: opacity 0.4s ease-out;
+  transition: opacity 0.4s ease-out, transform 0.26s cubic-bezier(0.45, 0, 0.9, 1);
 }
 
 .pellet-floor--expiring {
