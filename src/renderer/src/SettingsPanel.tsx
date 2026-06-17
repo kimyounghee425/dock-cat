@@ -132,6 +132,20 @@ export function SettingsPanel(): JSX.Element {
         </div>
       </section>
 
+      <section>
+        <h1>{t.food}</h1>
+        <button
+          className="setting-row"
+          onClick={() => update({ bowlEnabled: !cfg.bowlEnabled })}
+          type="button"
+        >
+          <span>{t.foodBowl}</span>
+          <span className={`switch ${cfg.bowlEnabled ? 'on' : ''}`}>
+            <span className="knob"></span>
+          </span>
+        </button>
+      </section>
+
       <section className="last">
         <h1>{t.startup}</h1>
         <button

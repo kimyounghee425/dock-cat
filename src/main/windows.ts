@@ -67,7 +67,7 @@ export function openSettings(): void {
 
   settings = new BrowserWindow({
     width: 360,
-    height: 740,
+    height: 810,
     resizable: false,
     title: MAIN_STR[getConfig().lang].title,
     webPreferences: {

@@ -38,7 +38,52 @@ body,
   transform-origin: bottom center;
 }
 
-/* Drop-to-delete target, shown only while dragging a cat. */
+/* Food bowl: a static, bottom-anchored sprite that sits on the floor and can
+   be dragged along x or trashed. Only the bowl itself is clickable. */
+.bowl {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 76px;
+  height: 76px;
+  image-rendering: pixelated;
+  pointer-events: auto;
+  -webkit-user-drag: none;
+}
+
+/* Food pellet attached to the cursor while holding food picked from the bowl.
+   Positioned via inline left/top (its center tracks the cursor) and never
+   intercepts the pointer so the feeding drag/click-through stays correct. */
+.pellet {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  z-index: 5;
+}
+
+/* A dropped pellet resting on the floor (bottom-anchored at an inline left x).
+   Same art as the held pellet; never intercepts the pointer. Fades out when it
+   expires unfed (FD11) via the .pellet-floor--expiring modifier. */
+.pellet-floor {
+  position: fixed;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  image-rendering: pixelated;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  z-index: 4;
+  transition: opacity 0.4s ease-out, transform 0.26s cubic-bezier(0.45, 0, 0.9, 1);
+}
+
+.pellet-floor--expiring {
+  opacity: 0;
+}
+
+/* Drop-to-delete target, shown only while dragging a cat or the bowl. */
 .trash {
   position: fixed;
   left: 50%;
