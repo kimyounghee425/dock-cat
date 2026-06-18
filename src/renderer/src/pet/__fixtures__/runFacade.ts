@@ -1,6 +1,10 @@
-// Drives the OLD `CatEngine` through the shared script with a seeded RNG and
-// records a frame after every TICK. This is the golden-master oracle: the new
-// machine must reproduce these frames exactly (design D7).
+// Drives the `CatEngine` FACADE (the XState-actor adapter) through the shared
+// script with a seeded RNG, calling the public methods exactly as PetWorld does
+// and recording a frame after every TICK via the mirrored x/y/animKey fields.
+//
+// This is the Phase-2 parity proof: the facade must reproduce the frozen golden
+// fixture (`cat-golden.ts`, captured from the original imperative engine in
+// Phase 1) byte-for-byte, end-to-end through the public API (design D7/§5).
 
 import { CatEngine } from '../engine'
 import {
@@ -20,7 +24,7 @@ function sample(x: number, y: number, animKey: string): Frame {
   return { x: Math.round(x * 1e6) / 1e6, y: Math.round(y * 1e6) / 1e6, animKey }
 }
 
-export function runOldEngine(steps: Step[] = script): Frame[] {
+export function runFacade(steps: Step[] = script): Frame[] {
   const rng = mulberry32(SEED)
   const engine = new CatEngine({
     def: fixtureDef,
@@ -34,6 +38,7 @@ export function runOldEngine(steps: Step[] = script): Frame[] {
   for (const step of steps) {
     if ('tick' in step) {
       engine.tick(step.tick)
+      // Read the mirrored fields exactly as PetWorld does each frame (D9).
       frames.push(sample(engine.x, engine.y, engine.animKey))
       continue
     }
@@ -75,5 +80,6 @@ export function runOldEngine(steps: Step[] = script): Frame[] {
         break
     }
   }
+  engine.dispose() // exercise teardown too (D8)
   return frames
 }

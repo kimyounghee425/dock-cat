@@ -158,7 +158,10 @@ export class PetWorld {
     window.removeEventListener('keydown', this.onKeyDown)
     this.clearFeeding() // drop any held pellet + release feeding targets
     this.clearPellets() // remove floor pellets, clear timers + cancel any eats
-    for (const c of this.cats) c.view.destroy()
+    for (const c of this.cats) {
+      c.engine.dispose() // D8: stop the actor + unsubscribe
+      c.view.destroy()
+    }
     this.cats = []
     this.removeBowl()
     this.trash.remove()
@@ -280,6 +283,7 @@ export class PetWorld {
         p.assignedCat = null
       }
     }
+    cat.engine.dispose() // D8: stop the actor + unsubscribe
     cat.view.destroy()
     this.cats = this.cats.filter((c) => c !== cat)
   }
