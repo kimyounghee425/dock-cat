@@ -19,8 +19,8 @@ interface Act {
   speed: number
 }
 
-const rand = (min: number, max: number): number => min + Math.random() * (max - min)
-const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)]
+const rand = (rng: () => number, min: number, max: number): number => min + rng() * (max - min)
+const pick = <T>(rng: () => number, arr: readonly T[]): T => arr[Math.floor(rng() * arr.length)]
 
 /**
  * Calm, cat-like behaviour. Mostly sits/grooms in one spot for 10s+ at a time,
@@ -37,6 +37,7 @@ export class CatEngine {
   private mode: Mode = 'awake'
   private facing: Facing = 'left'
   private getMaxX: () => number
+  private rng: () => number
 
   private moving = false
   private speed = 0
@@ -70,11 +71,13 @@ export class CatEngine {
     startX: number
     getMaxX: () => number
     sleepAfter: number
+    rng?: () => number
   }) {
     this.def = opts.def
     this.x = opts.startX
     this.getMaxX = opts.getMaxX
     this.sleepAfter = opts.sleepAfter
+    this.rng = opts.rng ?? Math.random
     this.startIdle()
   }
 
@@ -461,12 +464,12 @@ export class CatEngine {
       return
     }
     this.mode = 'awake'
-    this.facing = Math.random() < 0.5 ? 'left' : 'right'
+    this.facing = this.rng() < 0.5 ? 'left' : 'right'
     const dir = this.facing === 'right' ? 1 : -1
 
     // queue the panicked run that follows the leap
     this.queue = [
-      { key: `run_${this.facing}`, dur: rand(1.2, 2.2), moving: true, speed: this.def.runSpeed }
+      { key: `run_${this.facing}`, dur: rand(this.rng, 1.2, 2.2), moving: true, speed: this.def.runSpeed }
     ]
 
     // arc jump: x handled by the jump arc in tick(), not the moving branch
@@ -496,15 +499,15 @@ export class CatEngine {
 
   private autonomous(): void {
     // Calm bias: only stroll occasionally, and never twice in a row.
-    if (!this.lastMoving && Math.random() < 0.25) this.startWalk()
+    if (!this.lastMoving && this.rng() < 0.25) this.startWalk()
     else this.startIdle()
   }
 
   private startWalk(): void {
-    if (Math.random() < 0.5) this.facing = this.facing === 'left' ? 'right' : 'left'
+    if (this.rng() < 0.5) this.facing = this.facing === 'left' ? 'right' : 'left'
     this.apply({
       key: `walk_${this.facing}`,
-      dur: rand(1.5, 3.5),
+      dur: rand(this.rng, 1.5, 3.5),
       moving: true,
       speed: this.def.walkSpeed
     })
@@ -512,15 +515,15 @@ export class CatEngine {
 
   private startIdle(): void {
     const calm: string =
-      Math.random() < 0.5
-        ? pick(this.def.calmFront)
-        : `${pick(this.def.calmDir)}_${this.facing}`
+      this.rng() < 0.5
+        ? pick(this.rng, this.def.calmFront)
+        : `${pick(this.rng, this.def.calmDir)}_${this.facing}`
     // Licking looks odd if held too long — keep it brief; other calm poses linger.
-    const dur = calm.startsWith('lick') ? rand(3, 5) : rand(10, 18)
+    const dur = calm.startsWith('lick') ? rand(this.rng, 3, 5) : rand(this.rng, 10, 18)
 
     // Occasionally lead with a brief one-shot (yawn/meow/stretch), then settle.
-    if (Math.random() < 0.25) {
-      const p = pick(this.def.punctuation)
+    if (this.rng() < 0.25) {
+      const p = pick(this.rng, this.def.punctuation)
       this.queue = [{ key: calm, dur, moving: false, speed: 0 }]
       this.apply({ key: p, dur: this.playLen(p), moving: false, speed: 0 })
     } else {
@@ -540,6 +543,6 @@ export class CatEngine {
     this.mode = 'asleep'
     this.moving = false
     this.queue = []
-    this.animKey = `${pick(this.def.sleepStyles)}_${this.facing}`
+    this.animKey = `${pick(this.rng, this.def.sleepStyles)}_${this.facing}`
   }
 }
