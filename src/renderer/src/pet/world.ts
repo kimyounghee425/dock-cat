@@ -1,6 +1,7 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
+import { clampX, exceedsDragThreshold, pickTopmost, pointInRect } from './geometry'
 import bowlPng from '../assets/bowl.png'
 import pelletPng from '../assets/pellet.png'
 
@@ -313,8 +314,7 @@ export class PetWorld {
     }
   }
 
-  private clampBowlX = (x: number): number =>
-    Math.max(0, Math.min(window.innerWidth - BOWL_SIZE, x))
+  private clampBowlX = (x: number): number => clampX(x, 0, window.innerWidth - BOWL_SIZE)
 
   /**
    * Toggle food-hold ON: create the cursor-attached pellet at the click point,
@@ -526,23 +526,19 @@ export class PetWorld {
       this.capturing = on
       window.petApi.setIgnoreMouseEvents(!on)
     }
-    const catUnder = (cx: number, cy: number): CatInstance | null => {
-      // topmost (last drawn) first
-      for (let i = this.cats.length - 1; i >= 0; i--) {
-        const r = this.cats[i].view.getHitRect()
-        if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) return this.cats[i]
-      }
-      return null
-    }
-    const overTrash = (cx: number, cy: number): boolean => {
-      const r = this.trash.getBoundingClientRect()
-      return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
-    }
-    const bowlUnder = (cx: number, cy: number): boolean => {
-      if (!this.bowl) return false
-      const r = this.bowl.getBoundingClientRect()
-      return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
-    }
+    // Each helper reads the live DOM rect(s) at call time (never cached) and
+    // delegates the arithmetic to the pure geometry module.
+    const catUnder = (cx: number, cy: number): CatInstance | null =>
+      // Candidates in draw order (index 0 = first drawn); pickTopmost returns the
+      // last match, i.e. the topmost (last-drawn) cat — preserving cat priority.
+      pickTopmost(
+        this.cats.map((c) => ({ rect: c.view.getHitRect(), ref: c })),
+        { x: cx, y: cy }
+      )
+    const overTrash = (cx: number, cy: number): boolean =>
+      pointInRect({ x: cx, y: cy }, this.trash.getBoundingClientRect())
+    const bowlUnder = (cx: number, cy: number): boolean =>
+      this.bowl !== null && pointInRect({ x: cx, y: cy }, this.bowl.getBoundingClientRect())
     /** Whether the cursor is over any interactive object (cat or bowl). */
     const overInteractive = (cx: number, cy: number): boolean =>
       catUnder(cx, cy) !== null || bowlUnder(cx, cy)
@@ -596,7 +592,7 @@ export class PetWorld {
       }
 
       if (this.down && this.active) {
-        if (!this.dragging && Math.abs(e.clientX - this.downX) > 4) {
+        if (!this.dragging && exceedsDragThreshold(this.downX, e.clientX)) {
           this.dragging = true
           // FD4: grabbing a cat that was going to / eating a pellet frees that
           // pellet so it can be reassigned (startDrag clears the cat's eat state).
@@ -613,7 +609,7 @@ export class PetWorld {
       }
 
       if (this.down && this.bowlActive && this.bowl) {
-        if (!this.dragging && Math.abs(e.clientX - this.downX) > 4) {
+        if (!this.dragging && exceedsDragThreshold(this.downX, e.clientX)) {
           // Crossed the drag threshold: this is a reposition gesture, not a
           // food-pick click. Lock in bowl-drag mode.
           this.dragging = true
