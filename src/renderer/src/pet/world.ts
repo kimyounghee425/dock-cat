@@ -2,6 +2,7 @@ import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
 import { clampX, exceedsDragThreshold, pickTopmost, pointInRect } from './geometry'
+import { assignNearestFree, computeGather } from './feeding-logic'
 import bowlPng from '../assets/bowl.png'
 import pelletPng from '../assets/pellet.png'
 
@@ -355,24 +356,21 @@ export class PetWorld {
    */
   private updateFoodTargets(cursorX: number): void {
     const center = this.def.displaySize / 2
-    // Every awake/feeding cat within range gathers; the rest are released.
-    const inRange = this.cats.filter(
-      (c) => c.engine.isFreeToEat() && Math.abs(c.engine.x + center - cursorX) <= FOOD_RADIUS
-    )
-    const gathering = new Set(inRange)
-    for (const c of this.cats) {
-      if (!gathering.has(c)) c.engine.setFoodTarget(null)
-    }
-    // Fan the gatherers out around the cursor (sorted by current x so they don't
-    // cross over) instead of stacking on the same spot — otherwise N cats pile
-    // onto one x and look like a single cat.
-    inRange.sort((a, b) => a.engine.x - b.engine.x)
     const spacing = this.def.displaySize * 0.7
-    const n = inRange.length
-    inRange.forEach((c, i) => {
-      const offset = (i - (n - 1) / 2) * spacing
-      c.engine.setFoodTarget(cursorX + offset)
+    // Pure core decides membership (free + within FOOD_RADIUS of the cursor) and
+    // the fan-out target x for each gatherer; sprite CENTER x is the convention.
+    const targets = computeGather(
+      this.cats.map((c) => ({ x: c.engine.x + center, free: c.engine.isFreeToEat() })),
+      cursorX,
+      FOOD_RADIUS,
+      spacing
+    )
+    // Release everyone who isn't gathering, then send each gatherer to its spot.
+    const gathering = new Set(targets.map((t) => t.index))
+    this.cats.forEach((c, i) => {
+      if (!gathering.has(i)) c.engine.setFoodTarget(null)
     })
+    for (const t of targets) this.cats[t.index].engine.setFoodTarget(t.targetX)
   }
 
   /**
@@ -436,33 +434,25 @@ export class PetWorld {
    * pellet that couldn't be assigned yet gets picked up once a cat frees.
    */
   private assignPellets(): void {
-    // Build the taken-cats set once and update it incrementally as we assign,
-    // so O(P) instead of O(P²) and each newly-assigned cat is excluded for
-    // subsequent pellets in the same pass.
-    const taken = new Set<CatInstance>(
-      this.pellets.map((p) => p.assignedCat).filter((c): c is CatInstance => c !== null)
+    const center = this.def.displaySize / 2
+    // Pure core does the nearest-free-cat pass with an incremental taken-set
+    // (no double-assignment, deterministic tie-break), over plain {x, free} /
+    // {x, assignedCatIndex, expiring} data. Sprite CENTER x is the convention.
+    const assignments = assignNearestFree(
+      this.cats.map((c) => ({ x: c.engine.x + center, free: c.engine.isFreeToEat() })),
+      this.pellets.map((p) => ({
+        x: p.x,
+        assignedCatIndex: p.assignedCat ? this.cats.indexOf(p.assignedCat) : null,
+        expiring: p.expiring
+      }))
     )
-    for (const pellet of this.pellets) {
-      if (pellet.assignedCat || pellet.expiring) continue
-      let best: CatInstance | null = null
-      let bestDist = Infinity
-      for (const c of this.cats) {
-        if (!c.engine.isFreeToEat() || taken.has(c)) continue
-        const catX = c.engine.x + this.def.displaySize / 2
-        const dist = Math.abs(catX - pellet.x)
-        if (dist < bestDist) {
-          bestDist = dist
-          best = c
-        }
-      }
-      if (best) {
-        pellet.assignedCat = best
-        taken.add(best) // exclude from subsequent pellets in this pass
-        // On eat completion: remove the pellet (also frees the cat ref). The
-        // engine resets itself to autonomous before firing this.
-        best.engine.goEat(pellet.x, () => this.removePellet(pellet))
-      }
-      // No free cat → leave unassigned; a later assignPellets() tick retries.
+    for (const { pelletIndex, catIndex } of assignments) {
+      const pellet = this.pellets[pelletIndex]
+      const cat = this.cats[catIndex]
+      pellet.assignedCat = cat
+      // On eat completion: remove the pellet (also frees the cat ref). The engine
+      // resets itself to autonomous before firing this.
+      cat.engine.goEat(pellet.x, () => this.removePellet(pellet))
     }
   }
 
