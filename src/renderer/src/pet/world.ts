@@ -1,8 +1,9 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
-import { clampX, exceedsDragThreshold, pickTopmost, pointInRect } from './geometry'
+import { clampX, pickTopmost, pointInRect } from './geometry'
 import { assignNearestFree, computeGather } from './feeding-logic'
+import { reduce, type Effect, type GestureState } from './gesture'
 import bowlPng from '../assets/bowl.png'
 import pelletPng from '../assets/pellet.png'
 
@@ -71,22 +72,17 @@ export class PetWorld {
   private onBowlMoveCb: ((x: number) => void) | null = null
   private onBowlRemoveCb: (() => void) | null = null
 
+  /** Whether we're currently capturing the pointer (click-through OFF). */
   private capturing = false
-  private down = false
-  private dragging = false
-  private downX = 0
-  private active: CatInstance | null = null
-  /** True while the current pointer gesture is repositioning the bowl (not feeding). */
-  private bowlActive = false
-  private bowlGrabDx = 0
-
   /**
-   * Click-toggle holding state: true from the moment the user clicks the bowl
-   * (without dragging) until they click anywhere again or press ESC. Independent
-   * of the pointer-down gesture — persists across multiple pointer events.
+   * The pointer-gesture state, owned by the pure reducer in gesture.ts. All
+   * decision logic (drag-vs-click, bowl drag-vs-pick, food-hold toggle, ESC,
+   * bowl-removed) lives there; this class only reads live rects, dispatches
+   * events, and executes the returned effects. The `holding`/`holdingPressed`
+   * variants are the food-hold toggle that persists across press/release cycles.
    */
-  private holdingFood = false
-  /** Cursor-attached pellet element shown while holdingFood is true. */
+  private gesture: GestureState<CatInstance> = { kind: 'idle' }
+  /** Cursor-attached pellet element shown while holding food. */
   private heldPellet: HTMLImageElement | null = null
   /** Pellets resting on the floor, oldest first (FIFO for max-5 eviction). */
   private pellets: Pellet[] = []
@@ -128,17 +124,12 @@ export class PetWorld {
     window.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
 
-    // ESC registered once here; the handler no-ops when holdingFood is false.
+    // ESC registered once here; the reducer no-ops when not holding food. We
+    // don't know the cursor position from a keydown, so the reducer drops capture
+    // unconditionally; the next pointermove restores it if over a pet or bowl.
     this.onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !this.holdingFood) return
-      this.clearFeeding()
-      // We don't know the cursor position from a keydown event. Drop capture
-      // unconditionally; the next pointermove will restore it if the cursor is
-      // over a pet or bowl.
-      if (this.capturing) {
-        this.capturing = false
-        window.petApi.setIgnoreMouseEvents(true)
-      }
+      if (e.key !== 'Escape') return
+      this.dispatch({ type: 'ESC' })
     }
     window.addEventListener('keydown', this.onKeyDown)
 
@@ -190,6 +181,9 @@ export class PetWorld {
    */
   setBowl(enabled: boolean, x: number | null): void {
     if (!enabled) {
+      // Cancel any in-flight bowl gesture / food-hold (a config echo can fire
+      // mid-gesture), then tear down the element.
+      this.dispatch({ type: 'BOWL_REMOVED' })
       this.removeBowl()
       return
     }
@@ -290,29 +284,16 @@ export class PetWorld {
     this.cats = this.cats.filter((c) => c !== cat)
   }
 
+  /**
+   * DOM/config teardown of the bowl element only. Cancelling any in-flight bowl
+   * gesture / food-hold (trash, capture, feeding) is handled by the gesture
+   * reducer via the BOWL_REMOVED event — dispatched by external removal triggers
+   * (setBowl(false)) so a config echo mid-gesture doesn't leave flags stuck.
+   */
   private removeBowl(): void {
     if (!this.bowl) return
     this.bowl.remove()
     this.bowl = null
-    // If the bowl was being dragged or was the source of an active food-hold
-    // when it was removed (e.g. setBowl(false) fired mid-gesture from a
-    // config-change echo), abort so flags/trash/feeding don't get stuck.
-    // holdingFood is a click-toggle that outlives a single gesture, so we
-    // always cancel it when the bowl disappears — no bowl means no feeding.
-    const wasActive = this.bowlActive || this.holdingFood
-    if (this.bowlActive) {
-      this.bowlActive = false
-      this.down = false
-      this.dragging = false
-      this.trash.classList.remove('visible', 'hot')
-    }
-    if (this.holdingFood) {
-      this.clearFeeding() // sets holdingFood = false, removes pellet, nulls targets
-    }
-    if (wasActive && this.capturing) {
-      this.capturing = false
-      window.petApi.setIgnoreMouseEvents(true)
-    }
   }
 
   private clampBowlX = (x: number): number => clampX(x, 0, window.innerWidth - BOWL_SIZE)
@@ -324,7 +305,6 @@ export class PetWorld {
    * updateFeed().
    */
   private startFeed(x: number, y: number): void {
-    this.holdingFood = true
     if (!this.heldPellet) {
       const img = document.createElement('img')
       img.className = 'pellet'
@@ -380,7 +360,6 @@ export class PetWorld {
    * this if needed).
    */
   private clearFeeding(): void {
-    this.holdingFood = false
     if (this.heldPellet) {
       this.heldPellet.remove()
       this.heldPellet = null
@@ -506,187 +485,140 @@ export class PetWorld {
     }
   }
 
+  // ── pointer hit-testing (live DOM rect reads at call time, never cached) ────
+  /** Topmost cat under the point (last-drawn wins), preserving cat priority. */
+  private catUnder(cx: number, cy: number): CatInstance | null {
+    return pickTopmost(
+      this.cats.map((c) => ({ rect: c.view.getHitRect(), ref: c })),
+      { x: cx, y: cy }
+    )
+  }
+  private overTrash(cx: number, cy: number): boolean {
+    return pointInRect({ x: cx, y: cy }, this.trash.getBoundingClientRect())
+  }
+  private bowlUnder(cx: number, cy: number): boolean {
+    return this.bowl !== null && pointInRect({ x: cx, y: cy }, this.bowl.getBoundingClientRect())
+  }
+  /** Whether the cursor is over any interactive object (cat or bowl). */
+  private overInteractive(cx: number, cy: number): boolean {
+    return this.catUnder(cx, cy) !== null || this.bowlUnder(cx, cy)
+  }
+
   private bindPointer(): {
     onPointerDown: (e: PointerEvent) => void
     onPointerMove: (e: PointerEvent) => void
     onPointerUp: (e: PointerEvent) => void
   } {
-    const setCapture = (on: boolean): void => {
-      if (on === this.capturing) return
-      this.capturing = on
-      window.petApi.setIgnoreMouseEvents(!on)
-    }
-    // Each helper reads the live DOM rect(s) at call time (never cached) and
-    // delegates the arithmetic to the pure geometry module.
-    const catUnder = (cx: number, cy: number): CatInstance | null =>
-      // Candidates in draw order (index 0 = first drawn); pickTopmost returns the
-      // last match, i.e. the topmost (last-drawn) cat — preserving cat priority.
-      pickTopmost(
-        this.cats.map((c) => ({ rect: c.view.getHitRect(), ref: c })),
-        { x: cx, y: cy }
-      )
-    const overTrash = (cx: number, cy: number): boolean =>
-      pointInRect({ x: cx, y: cy }, this.trash.getBoundingClientRect())
-    const bowlUnder = (cx: number, cy: number): boolean =>
-      this.bowl !== null && pointInRect({ x: cx, y: cy }, this.bowl.getBoundingClientRect())
-    /** Whether the cursor is over any interactive object (cat or bowl). */
-    const overInteractive = (cx: number, cy: number): boolean =>
-      catUnder(cx, cy) !== null || bowlUnder(cx, cy)
-
+    // Each handler reads the live rects, builds an event with the pre-computed
+    // hit-test results, and dispatches it through the pure reducer. The reducer
+    // owns ALL gesture decisions; dispatch() executes the returned effects.
     const onPointerDown = (e: PointerEvent): void => {
-      // --- While holding food, a click drops a pellet (or ends the hold if it
-      // lands on the bowl). We record the down position + whether it started on
-      // the bowl here; onPointerUp decides click vs drag and acts. ---
-      if (this.holdingFood) {
-        this.down = true
-        this.dragging = false
-        this.downX = e.clientX
-        this.active = null
-        // Reuse bowlActive to remember "this click began on the bowl" so the up
-        // handler can end the hold instead of dropping a pellet there.
-        this.bowlActive = this.bowl !== null && bowlUnder(e.clientX, e.clientY)
-        // Don't let bowl or cat logic below run — the gesture belongs to feeding.
-        return
-      }
-
-      // Cats keep priority over the bowl (preserves existing cat hit behavior).
-      const c = catUnder(e.clientX, e.clientY)
-      if (c) {
-        this.down = true
-        this.dragging = false
-        this.downX = e.clientX
-        this.active = c
-        return
-      }
-
-      if (this.bowl && bowlUnder(e.clientX, e.clientY)) {
-        this.down = true
-        this.dragging = false
-        this.downX = e.clientX
-        // Bowl gesture starts as potentially a drag (reposition) OR a click
-        // (toggle food-hold). We don't know yet — wait for pointermove/up to
-        // decide. bowlActive is set on first move past the threshold; if the
-        // pointer goes up without crossing it, it's a click → start holding.
-        this.bowlActive = true
-        this.bowlGrabDx = e.clientX - this.bowlX
-      }
+      this.dispatch({
+        type: 'POINTER_DOWN',
+        x: e.clientX,
+        y: e.clientY,
+        bowlX: this.bowlX,
+        hit: { cat: this.catUnder(e.clientX, e.clientY), onBowl: this.bowlUnder(e.clientX, e.clientY) }
+      })
     }
-
     const onPointerMove = (e: PointerEvent): void => {
-      // --- Holding food: pellet tracks cursor, cats gather. ---
-      if (this.holdingFood) {
-        this.updateFeed(e.clientX, e.clientY)
-        // Keep capture so cursor moves register even over transparent areas.
-        setCapture(true)
-        return
-      }
-
-      if (this.down && this.active) {
-        if (!this.dragging && exceedsDragThreshold(this.downX, e.clientX)) {
-          this.dragging = true
-          // FD4: grabbing a cat that was going to / eating a pellet frees that
-          // pellet so it can be reassigned (startDrag clears the cat's eat state).
-          this.unassignCat(this.active)
-          this.active.engine.startDrag()
-          this.trash.classList.add('visible')
-        }
-        if (this.dragging) {
-          this.active.engine.dragTo(e.clientX - this.def.displaySize / 2)
-          setCapture(true)
-          this.trash.classList.toggle('hot', overTrash(e.clientX, e.clientY))
-        }
-        return
-      }
-
-      if (this.down && this.bowlActive && this.bowl) {
-        if (!this.dragging && exceedsDragThreshold(this.downX, e.clientX)) {
-          // Crossed the drag threshold: this is a reposition gesture, not a
-          // food-pick click. Lock in bowl-drag mode.
-          this.dragging = true
-          this.trash.classList.add('visible')
-        }
-        if (this.dragging) {
-          this.bowlX = this.clampBowlX(e.clientX - this.bowlGrabDx)
-          this.bowl.style.left = `${this.bowlX}px`
-          setCapture(true)
-          this.trash.classList.toggle('hot', overTrash(e.clientX, e.clientY))
-        }
-        return
-      }
-
-      setCapture(overInteractive(e.clientX, e.clientY))
+      this.dispatch({
+        type: 'POINTER_MOVE',
+        x: e.clientX,
+        y: e.clientY,
+        overTrash: this.overTrash(e.clientX, e.clientY),
+        overInteractive: this.overInteractive(e.clientX, e.clientY)
+      })
     }
-
     const onPointerUp = (e: PointerEvent): void => {
-      // --- While holding food: a click drops a pellet; clicking the bowl ends
-      // the hold. ---
-      // Holding end-condition (chosen): each clean click while holding drops one
-      // floor pellet and KEEPS holding (PRD "무한 공급·여러개"), so the user can
-      // rapidly drop several. The hold ends only via (a) clicking the bowl again
-      // or (b) ESC. onPointerMove returns early while holding, so this.dragging is
-      // always false here — there is no drag-to-reposition gesture mid-hold.
-      if (this.holdingFood && this.down) {
-        const startedOnBowl = this.bowlActive
-        // If the click ended on the bowl too, treat it as "put the food back" →
-        // end the hold. Otherwise drop a pellet at the cursor x and keep holding.
-        if (startedOnBowl && this.bowl && bowlUnder(e.clientX, e.clientY)) {
-          this.clearFeeding()
-        } else {
-          this.dropPellet(e.clientX, e.clientY)
-          // Stay in holding mode: refresh the gather pass for the cats that are
-          // still begging the (unchanged) cursor position.
-          this.updateFoodTargets(e.clientX)
-        }
-        this.down = false
-        this.dragging = false
-        this.bowlActive = false
-        // Keep capture while still holding so subsequent clicks/moves register.
-        setCapture(this.holdingFood ? true : overInteractive(e.clientX, e.clientY))
-        return
-      }
-
-      if (this.down && this.active) {
-        if (this.dragging) {
-          if (overTrash(e.clientX, e.clientY)) {
-            this.removeCat(this.active)
-            this.onDeleteCb?.()
-          } else {
-            this.active.engine.endDrag()
-          }
-          this.trash.classList.remove('visible', 'hot')
-        } else {
-          this.active.engine.click()
-        }
-      } else if (this.down && this.bowlActive) {
-        // Handle even if this.bowl is null (removeBowl() may have nulled it
-        // mid-drag via setBowl(false)) — we still need to clean up trash/flags.
-        if (this.dragging) {
-          // Drag ended: reposition or trash the bowl (Phase A behavior intact).
-          if (this.bowl && overTrash(e.clientX, e.clientY)) {
-            this.removeBowl()
-            this.onBowlRemoveCb?.()
-          } else if (this.bowl) {
-            this.onBowlMoveCb?.(this.bowlX)
-          }
-          this.trash.classList.remove('visible', 'hot')
-        } else {
-          // Clean click on the bowl (no drag): toggle food-hold ON.
-          // Cats start gathering; ESC (permanent listener) or next click cancels.
-          this.startFeed(e.clientX, e.clientY)
-          setCapture(true)
-        }
-      }
-
-      this.down = false
-      this.dragging = false
-      this.active = null
-      this.bowlActive = false
-      if (!this.holdingFood) {
-        setCapture(overInteractive(e.clientX, e.clientY))
-      }
+      this.dispatch({
+        type: 'POINTER_UP',
+        x: e.clientX,
+        y: e.clientY,
+        onBowl: this.bowlUnder(e.clientX, e.clientY),
+        overTrash: this.overTrash(e.clientX, e.clientY),
+        overInteractive: this.overInteractive(e.clientX, e.clientY)
+      })
     }
-
     return { onPointerDown, onPointerMove, onPointerUp }
+  }
+
+  /**
+   * Feed an event through the pure gesture reducer, store the next state, and
+   * execute the returned effects SYNCHRONOUSLY in order — so click-through
+   * capture toggles within the same event turn, exactly as the old code did.
+   */
+  private dispatch(event: Parameters<typeof reduce<CatInstance>>[1]): void {
+    const { state, effects } = reduce(this.gesture, event)
+    this.gesture = state
+    for (const effect of effects) this.runEffect(effect)
+  }
+
+  /** Execute one gesture effect against the DOM / engine / IO (impure). */
+  private runEffect(effect: Effect<CatInstance>): void {
+    switch (effect.type) {
+      case 'SET_CAPTURE':
+        // Idempotent: only flips click-through when the value actually changes.
+        if (effect.on !== this.capturing) {
+          this.capturing = effect.on
+          window.petApi.setIgnoreMouseEvents(!effect.on)
+        }
+        break
+      case 'START_DRAG':
+        // FD4: grabbing a cat that was going to / eating a pellet frees that
+        // pellet so it can be reassigned (startDrag clears the cat's eat state).
+        this.unassignCat(effect.cat)
+        effect.cat.engine.startDrag()
+        this.trash.classList.add('visible')
+        break
+      case 'DRAG_TO':
+        effect.cat.engine.dragTo(effect.x - this.def.displaySize / 2)
+        break
+      case 'END_DRAG':
+        effect.cat.engine.endDrag()
+        break
+      case 'CLICK_CAT':
+        effect.cat.engine.click()
+        break
+      case 'REMOVE_CAT':
+        this.removeCat(effect.cat)
+        this.onDeleteCb?.()
+        break
+      case 'START_FEED':
+        this.startFeed(effect.x, effect.y)
+        break
+      case 'UPDATE_FEED':
+        this.updateFeed(effect.x, effect.y)
+        break
+      case 'UPDATE_FOOD_TARGETS':
+        this.updateFoodTargets(effect.x)
+        break
+      case 'CLEAR_FEEDING':
+        this.clearFeeding()
+        break
+      case 'DROP_PELLET':
+        this.dropPellet(effect.x, effect.y)
+        break
+      case 'SET_BOWL_X':
+        if (this.bowl) {
+          this.bowlX = this.clampBowlX(effect.x)
+          this.bowl.style.left = `${this.bowlX}px`
+        }
+        break
+      case 'PERSIST_BOWL_X':
+        if (this.bowl) this.onBowlMoveCb?.(this.bowlX)
+        break
+      case 'REMOVE_BOWL_CFG':
+        if (this.bowl) {
+          this.removeBowl()
+          this.onBowlRemoveCb?.()
+        }
+        break
+      case 'TRASH':
+        if (effect.visible !== undefined) this.trash.classList.toggle('visible', effect.visible)
+        if (effect.hot !== undefined) this.trash.classList.toggle('hot', effect.hot)
+        break
+    }
   }
 
   private frame(now: number): void {
