@@ -1,23 +1,14 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// geometry.ts — pure pointer geometry / hit-testing (no DOM, no IO).
-//
-// `world.ts` reads the live DOM rects at the moment of each pointer event and
-// passes them in here as plain data; these functions only do arithmetic. Keeping
-// this layer pure makes the hit-test semantics unit-testable and portable (the
-// Tauri migration keeps the webview JS verbatim and rewrites only the shell).
-// ─────────────────────────────────────────────────────────────────────────────
+// geometry.ts — 순수 포인터 기하/히트테스트 (DOM·IO 없음).
+// 호출부(world.ts)가 포인터 이벤트 시점에 live rect를 읽어 plain 데이터로 넘기고,
+// 여기서는 산술만 한다. 순수 유지 → 단위 테스트 가능 + 이식 가능.
 
-/** A pointer position in client coordinates. */
 export interface Point {
   x: number
   y: number
 }
 
-/**
- * An axis-aligned rectangle in client coordinates. Structurally satisfied by
- * both `HitRect` (cat hit boxes) and the browser's `DOMRect`
- * (`getBoundingClientRect()`), so call sites can pass either without adapting.
- */
+// HitRect(고양이 히트박스)와 브라우저 DOMRect 둘 다 구조적으로 만족 → 호출부가
+// 어느 쪽이든 그대로 넘길 수 있다.
 export interface Rect {
   left: number
   top: number
@@ -25,26 +16,19 @@ export interface Rect {
   bottom: number
 }
 
-/** A candidate hit target: its rect paired with the value to return if hit. */
+// 히트 후보: rect + 맞았을 때 돌려줄 값.
 export interface Hit<T> {
   rect: Rect
   ref: T
 }
 
-/**
- * Point-in-rect test with bounds INCLUSIVE on all four edges — byte-faithful to
- * world.ts's original `cx >= left && cx <= right && cy >= top && cy <= bottom`.
- */
+// 네 변 모두 inclusive(경계 포함) 판정.
 export function pointInRect(pt: Point, rect: Rect): boolean {
   return pt.x >= rect.left && pt.x <= rect.right && pt.y >= rect.top && pt.y <= rect.bottom
 }
 
-/**
- * Pick the topmost hit under `pt`, or null if none. Candidates are given in DRAW
- * order (index 0 = first drawn / bottom-most), so the topmost hit is the
- * LAST-matching one — preserving world.ts's original behaviour of scanning the
- * cat list from last to first and returning the first match it finds.
- */
+// `pt` 아래의 topmost 히트(없으면 null). 후보는 draw 순서(index 0 = 맨 아래)로 주어지므로
+// topmost는 "마지막으로 맞은" 것 — 리스트를 끝에서부터 훑어 첫 히트를 쓰던 것과 동치.
 export function pickTopmost<T>(candidates: ReadonlyArray<Hit<T>>, pt: Point): T | null {
   let hit: T | null = null
   for (const candidate of candidates) {
@@ -53,16 +37,12 @@ export function pickTopmost<T>(candidates: ReadonlyArray<Hit<T>>, pt: Point): T 
   return hit
 }
 
-/** Clamp `x` to the inclusive range [min, max]. */
 export function clampX(x: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, x))
 }
 
-/**
- * Whether the pointer has moved far enough from its press point to count as a
- * drag rather than a click. Matches world.ts's `Math.abs(x - downX) > 4` — note
- * STRICTLY greater than, so exactly `threshold` px is still a click.
- */
+// 클릭이 아니라 드래그로 칠 만큼 눌렀던 지점에서 벗어났는가. STRICTLY 초과이므로
+// 정확히 threshold px는 아직 클릭이다.
 export function exceedsDragThreshold(downX: number, x: number, threshold = 4): boolean {
   return Math.abs(x - downX) > threshold
 }

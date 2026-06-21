@@ -1,43 +1,28 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// feeding-logic.ts — pure feeding algorithms (no engine refs, no DOM, no IO).
-//
-// The two bug-prone pieces of the feeding flow, expressed over PLAIN DATA so they
-// can be unit-tested in isolation and ported verbatim (the Tauri migration keeps
-// the webview JS and rewrites only the shell):
-//   • computeGather       — radius membership + fan-out around the cursor
-//   • assignNearestFree   — nearest-free-cat → pellet assignment, no double-assign
-//
-// `world.ts` maps its cats/pellets to these shapes, calls the function, then
-// applies the engine/DOM effects from the returned plain results.
-// ─────────────────────────────────────────────────────────────────────────────
+// feeding-logic.ts — 순수 먹이 알고리즘 (engine·DOM·IO 없음).
+// 버그가 잦던 두 곳을 plain 데이터 위에서 다뤄 단위 테스트로 잠근다.
+//   • computeGather     — 반경 멤버십 + 커서 주변 fan-out
+//   • assignNearestFree — 최근접 free 고양이 → pellet 배정, 이중배정 금지
+// world.ts가 cats/pellets를 이 형태로 매핑해 호출하고, 결과로 engine/DOM 효과를 적용.
 
-/** A cat reduced to what the feeding math needs: its CENTER x and eligibility. */
 export interface GatherCat {
-  /** Sprite CENTER x in client coords (caller computes engine.x + displaySize/2). */
+  // 스프라이트 CENTER x (호출부가 engine.x + displaySize/2로 계산).
   x: number
-  /** Eligible to gather / be assigned (awake or already gathering — not asleep/eating elsewhere). */
+  // 모임/배정 가능(awake 또는 이미 모이는 중 — 자거나 다른 걸 먹는 중 아님).
   free: boolean
 }
 
-/** One gather result: the index into the input `cats` array + where it should go. */
+// gather 결과 한 건: 입력 `cats` 배열의 index + 가야 할 x.
 export interface GatherTarget {
   index: number
   targetX: number
 }
 
-/**
- * Decide which cats gather around `cursorX` and each one's target x.
- *
- * Membership: free AND within `radius` of the cursor (INCLUSIVE — matches the
- * original `<= radius`). The in-range members are sorted by x and fanned out
- * evenly so they don't stack on one spot (the "only one cat follows / cats pile
- * up" fix): `targetX = cursorX + (i - (n-1)/2) * spacing`.
- *
- * The sort is stable, so members at the same x keep their original (input) order
- * — preserving world.ts's reliance on Array.sort stability. Returns one entry per
- * gathering cat (by input index); cats not listed should be released by the
- * caller (`setFoodTarget(null)`).
- */
+// `cursorX` 주변에 모일 고양이와 각자의 target x를 결정.
+// 멤버십: free AND 커서로부터 `radius` 이내(inclusive). 한 점에 쌓이지 않도록
+// 범위 내 멤버를 x로 정렬해 고르게 펼친다("한 마리만 따라옴/겹침" 수정):
+//   targetX = cursorX + (i - (n-1)/2) * spacing
+// 정렬은 stable이라 같은 x 멤버는 입력 순서 유지(Array.sort 안정성에 의존). 모이는
+// 고양이마다(입력 index 기준) 한 건 반환; 목록에 없는 고양이는 호출부가 풀어준다.
 export function computeGather(
   cats: ReadonlyArray<GatherCat>,
   cursorX: number,
@@ -47,7 +32,7 @@ export function computeGather(
   const inRange = cats
     .map((cat, index) => ({ index, x: cat.x, free: cat.free }))
     .filter((c) => c.free && Math.abs(c.x - cursorX) <= radius)
-  // Stable sort by x so equal-x members keep input order (matches Array.sort).
+  // x로 stable 정렬 → 같은 x 멤버는 입력 순서 유지.
   inRange.sort((a, b) => a.x - b.x)
   const n = inRange.length
   return inRange.map((c, i) => ({
@@ -56,36 +41,28 @@ export function computeGather(
   }))
 }
 
-/** A cat reduced for assignment: its CENTER x and whether it's free to eat. */
 export interface AssignCat {
   x: number
   free: boolean
 }
 
-/** A pellet reduced for assignment: its x + current assignment / expiry status. */
 export interface AssignPellet {
   x: number
-  /** Index into the cats array this pellet is already assigned to, else null. */
+  // 이미 배정된 고양이의 cats 배열 index, 없으면 null.
   assignedCatIndex: number | null
-  /** True while fading out — never (re)assign an expiring pellet. */
+  // 페이드아웃 중 — expiring pellet은 절대 (재)배정하지 않는다.
   expiring: boolean
 }
 
-/** One assignment result: pellet index ← cat index (both into the input arrays). */
 export interface Assignment {
   pelletIndex: number
   catIndex: number
 }
 
-/**
- * For every unassigned, non-expiring pellet, pick the nearest free cat that isn't
- * already taken, in a single O(P·C) pass. The `taken` set starts from cats
- * already assigned to a pellet and grows as we assign, so no cat is given two
- * pellets in one pass (FD4 no-double-assign). Distance uses `<` (strictly less),
- * so on a tie the EARLIER cat (by input index) wins — deterministic, matching the
- * original iteration order. A pellet with no available free cat is simply omitted
- * (left unassigned; a later pass retries).
- */
+// 미배정·비-expiring pellet마다 아직 taken 아닌 최근접 free 고양이를 단일 O(P·C) 패스로 고른다.
+// `taken`은 이미 배정된 고양이로 시작해 배정할 때마다 키워, 한 패스에서 한 고양이가 두 pellet을
+// 받지 않게 한다(이중배정 금지). 거리 비교는 `<`(strictly less)라 동률이면 더 앞 index 고양이가
+// 이긴다 — 결정적. free 고양이가 없으면 그 pellet은 생략(다음 패스에서 재시도).
 export function assignNearestFree(
   cats: ReadonlyArray<AssignCat>,
   pellets: ReadonlyArray<AssignPellet>

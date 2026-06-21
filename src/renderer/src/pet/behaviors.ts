@@ -1,28 +1,21 @@
 import type { Facing, PetDefinition } from './types'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// behaviors.ts — the cat's PURE behaviour policy (the "what each behaviour
-// computes" half of the engine; `catMachine.ts` owns "what transitions exist").
+// behaviors.ts — 고양이의 순수 행동 정책("각 행동이 무엇을 계산하는가"; catMachine.ts는
+// "어떤 전이가 있는가"를 소유).
 //
-// Every helper here is a pure function: it reads a snapshot of `CatContext` and
-// returns a partial patch (or new value) — it never mutates its input. Some
-// helpers call `ctx.rng()` (the shared seeded closure); the ORDER of those calls
-// must match the original imperative engine exactly, or golden-master parity
-// breaks. Queue/jump updates produce NEW arrays/objects (design D6).
-// ─────────────────────────────────────────────────────────────────────────────
+// 여기 헬퍼는 모두 순수 함수: CatContext 스냅샷을 읽어 부분 패치(또는 새 값)를 반환하고,
+// 입력을 절대 변형하지 않는다. 일부는 ctx.rng()(공유 시드 클로저)를 호출하는데, 그 호출
+// ORDER가 옛 명령형 engine과 정확히 같아야 골든마스터 패리티가 깨지지 않는다.
+// queue/jump 갱신은 항상 새 배열/객체를 만든다.
 
-/** Stop hopping once this close to the food target (px). Prevents jitter. */
+// 먹이 타깃에 이만큼 가까우면 hop을 멈춘다(px). 떨림 방지.
 export const FEED_STOP_THRESHOLD = 30
-/** How far each feeding hop advances toward the target (px). */
+// 각 먹이 hop이 타깃 쪽으로 전진하는 거리(px).
 export const FEED_HOP_STEP = 70
-/**
- * When going to eat a dropped floor pellet, "essentially on top" means within
- * this many px of the pellet x — close enough to eat front-facing rather than
- * leaning left/right. (FD7)
- */
+// 떨어진 pellet의 x와 이 px 이내면 "사실상 바로 위" — 좌/우로 기울지 않고 정면(front)으로 먹는다.
 export const EAT_ONTOP_THRESHOLD = 20
 
-/** One queued behaviour beat (pose + how long to hold it). */
+// 큐에 들어가는 행동 한 박자(pose + 얼마나 유지할지).
 export interface Act {
   key: string
   dur: number
@@ -30,7 +23,7 @@ export interface Act {
   speed: number
 }
 
-/** The jump arc shared by the startled leap and every feeding/eating hop. */
+// 놀란 도약과 모든 feeding/eating hop이 공유하는 jump arc.
 export interface Jump {
   active: boolean
   t: number
@@ -39,10 +32,10 @@ export interface Jump {
   dx: number
 }
 
-/** The "no jump in progress" sentinel (a fresh object each time it's assigned). */
+// "진행 중 jump 없음" 센티넬.
 export const NO_JUMP: Jump = { active: false, t: 0, dur: 0, fromX: 0, dx: 0 }
 
-/** Quantitative cat state — the machine's context, owned here so behaviours type-check. */
+// 정량 고양이 상태 — 머신의 context. 행동 헬퍼가 타입 체크되도록 여기서 소유.
 export interface CatContext {
   def: PetDefinition
   getMaxX: () => number
@@ -71,7 +64,7 @@ export interface CatContext {
   eatRemaining: number
   onEatenCb: (() => void) | null
 
-  /** Drained + fired by the facade after each send (D4). */
+  // 매 send 후 facade가 drain·발화.
   pendingAfterTransition: Array<() => void>
 }
 
@@ -80,16 +73,16 @@ export const playLen = (def: PetDefinition, k: string): number =>
 
 export const rand = (rng: () => number, min: number, max: number): number =>
   min + rng() * (max - min)
-// Relies on rng() returning a value in [0, 1) so floor(rng()*len) ∈ [0, len-1].
+// rng()가 [0, 1)을 반환한다는 전제 → floor(rng()*len) ∈ [0, len-1].
 export const pick = <T>(rng: () => number, arr: readonly T[]): T =>
   arr[Math.floor(rng() * arr.length)]
 
-/** apply(): mirror of the old CatEngine.apply — set the current pose from an Act. */
+// Act로부터 현재 pose 설정.
 export function apply(a: Act): Partial<CatContext> {
   return { animKey: a.key, moving: a.moving, speed: a.speed, remaining: a.dur, lastMoving: a.moving }
 }
 
-/** startWalk(): pick (maybe flip) facing + a walk Act. */
+// facing을 (가끔 뒤집어) 고르고 walk Act 생성.
 export function startWalk(ctx: CatContext): Partial<CatContext> {
   let facing = ctx.facing
   if (ctx.rng() < 0.5) facing = facing === 'left' ? 'right' : 'left'
@@ -99,15 +92,15 @@ export function startWalk(ctx: CatContext): Partial<CatContext> {
   }
 }
 
-/** startIdle(): pick a calm pose (optionally led by a one-shot punctuation). */
+// calm pose 선택(가끔 1회성 punctuation으로 시작).
 export function startIdle(ctx: CatContext): Partial<CatContext> {
   const { def, rng, facing } = ctx
   const calm: string =
     rng() < 0.5 ? pick(rng, def.calmFront) : `${pick(rng, def.calmDir)}_${facing}`
-  // Licking looks odd if held too long — keep it brief; other calm poses linger.
+  // lick은 오래 끌면 어색 — 짧게; 다른 calm pose는 길게 유지.
   const dur = calm.startsWith('lick') ? rand(rng, 3, 5) : rand(rng, 10, 18)
 
-  // Occasionally lead with a brief one-shot (yawn/meow/stretch), then settle.
+  // 가끔 짧은 1회성(yawn/meow/stretch)으로 시작한 뒤 정착.
   if (rng() < 0.25) {
     const p = pick(rng, def.punctuation)
     return {
@@ -118,13 +111,13 @@ export function startIdle(ctx: CatContext): Partial<CatContext> {
   return apply({ key: calm, dur, moving: false, speed: 0 })
 }
 
-/** autonomous(): calm bias — only stroll occasionally, never twice in a row. */
+// calm 편향 — 가끔만 산책, 연속 두 번은 안 함.
 export function autonomous(ctx: CatContext): Partial<CatContext> {
   if (!ctx.lastMoving && ctx.rng() < 0.25) return startWalk(ctx)
   return startIdle(ctx)
 }
 
-/** advance(): pop the queue (apply next), else go autonomous. */
+// 큐를 pop해 다음 것 적용, 비었으면 autonomous.
 export function advance(ctx: CatContext): Partial<CatContext> {
   if (ctx.queue.length > 0) {
     const [next, ...rest] = ctx.queue
@@ -133,10 +126,7 @@ export function advance(ctx: CatContext): Partial<CatContext> {
   return autonomous(ctx)
 }
 
-/**
- * feedStep(): one feeding decision — hop toward the food, or settle into begging.
- * Returns a patch describing the chosen pose; clamped so hops never overshoot.
- */
+// 먹이 결정 1회 — 먹이 쪽으로 hop 하거나 begging으로 정착. hop이 타깃/화면을 넘지 않게 clamp.
 export function feedStep(ctx: CatContext): Partial<CatContext> {
   if (ctx.foodTargetX === null) return {}
   const max = ctx.getMaxX()
@@ -146,8 +136,8 @@ export function feedStep(ctx: CatContext): Partial<CatContext> {
   const dist = Math.abs(dx)
 
   if (dist <= FEED_STOP_THRESHOLD) {
-    // Close enough: stand on hind legs and beg, facing the food. Only flip when
-    // dx is clearly nonzero — keep current facing when directly above (dx === 0).
+    // 충분히 가까움: on_hind로 먹이를 향해 beg. dx가 분명히 nonzero일 때만 방향을 바꾸고,
+    // 바로 위(dx === 0)면 현재 facing 유지(임의 flip 방지).
     let facing = ctx.facing
     if (dx > 0) facing = 'right'
     else if (dx < 0) facing = 'left'
@@ -170,10 +160,7 @@ export function feedStep(ctx: CatContext): Partial<CatContext> {
   }
 }
 
-/**
- * eatStep(): one eating decision — hop toward the pellet, or face it and start
- * the one-shot eat animation. Returns a patch (may set eatRemaining to begin).
- */
+// 먹기 결정 1회 — pellet 쪽으로 hop 하거나, 마주보고 1회성 eat 애니 시작.
 export function eatStep(ctx: CatContext): Partial<CatContext> {
   if (ctx.eatTargetX === null) return {}
   const max = ctx.getMaxX()
@@ -214,11 +201,8 @@ export function eatStep(ctx: CatContext): Partial<CatContext> {
   }
 }
 
-/**
- * fallAsleep(): pick a sleep pose by facing. Mirrors the old engine's sleepNow()
- * which clears jumpActive/y for ALL modes before sleeping (engine.ts:122-124),
- * so a cat that falls asleep mid-leap doesn't stay frozen aloft with a stale arc.
- */
+// facing별 sleep pose 선택. jump/y도 함께 정리하므로 도약 중에 잠들어도 허공에 멈춘 채
+// 굳지 않는다(stale arc 방지).
 export function fallAsleep(ctx: CatContext): Partial<CatContext> {
   return {
     moving: false,
@@ -229,7 +213,7 @@ export function fallAsleep(ctx: CatContext): Partial<CatContext> {
   }
 }
 
-/** Integrate one frame of the jump arc; returns the new {x,y} + whether it ended. */
+// jump arc 한 프레임 적분; 새 {x,y}와 종료 여부 반환.
 export function tickArc(
   ctx: CatContext,
   dt: number

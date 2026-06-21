@@ -8,7 +8,7 @@ function applyLoginItem(): void {
   app.setLoginItemSettings({ openAtLogin: getConfig().launchAtLogin })
 }
 
-/** Wire every ipcMain handler. Call once after the app is ready. */
+// 모든 ipcMain 핸들러 등록. 앱 ready 후 한 번만 호출.
 export function registerIpc(): void {
   ipcMain.on('set-ignore-mouse', (_e, ignore: boolean) => {
     getOverlayWindow()?.setIgnoreMouseEvents(ignore, { forward: true })

@@ -5,11 +5,8 @@ import { STRINGS } from './i18n'
 
 const toSec = (min: number | null): number => (min === null ? Infinity : min * 60)
 
-/**
- * Mounts the pet world: spawns cats per the saved counts and keeps them in sync
- * with live config changes (counts + sleep timer). When a cat is dragged to the
- * trash, persists the reduced count back to config.
- */
+// pet world를 마운트: 저장된 counts로 고양이를 spawn하고 live config 변경(counts + sleep
+// 타이머)과 동기화. 고양이를 trash로 드래그하면 줄어든 count를 config에 영속.
 export function PetStage(): JSX.Element {
   const stageRef = useRef<HTMLDivElement>(null)
 
@@ -21,16 +18,16 @@ export function PetStage(): JSX.Element {
     const unsubscribe: Array<() => void> = []
 
     window.petApi.getConfig().then((cfg) => {
-      // Effect was cleaned up before config resolved (e.g. StrictMode remount).
+      // config가 resolve되기 전에 effect가 정리됨(예: StrictMode 리마운트).
       if (disposed || !stageRef.current) return
       world = new PetWorld(stageRef.current, cat, CAT_SHEETS, toSec(cfg.sleepAfterMin))
       world.setCounts(cfg.counts)
       world.setNoWake(cfg.noWake)
       world.setTrashLabel(STRINGS[cfg.lang].giveAway)
       world.setBowl(cfg.bowlEnabled, cfg.bowlX)
-      // a cat was trashed → persist the new counts
+      // 고양이가 trash됨 → 새 counts 영속
       world.onDelete(() => window.petApi.setConfig({ counts: world!.getCounts() }))
-      // bowl dragged → persist its x; bowl trashed → turn the toggle off
+      // bowl 드래그 → x 영속; bowl trash → 토글 off
       world.onBowlMove((x) => window.petApi.setConfig({ bowlX: x }))
       world.onBowlRemove(() => window.petApi.setConfig({ bowlEnabled: false }))
       unsubscribe.push(

@@ -7,12 +7,9 @@ export interface HitRect {
   bottom: number
 }
 
-/**
- * Render adapter: draws the current animation frame from the sprite sheet onto
- * a crisp (nearest-neighbour) canvas. Left/right are separate rows, so nothing
- * is mirrored. Each frame the lowest opaque pixel is aligned to the floor and
- * the opaque bounding box is exposed for hit-testing.
- */
+// 렌더 어댑터: 스프라이트 시트의 현재 프레임을 nearest-neighbour 캔버스에 그린다. left/right가
+// 별도 row라 미러링 없음. 가장 아래 불투명 픽셀을 바닥에 맞추고, 불투명 bounding box를
+// 히트테스트용으로 노출한다.
 export class PetView {
   private el: HTMLDivElement
   private canvas: HTMLCanvasElement
@@ -84,7 +81,6 @@ export class PetView {
     this.el.style.transform = `translate(${x}px, ${-y}px)`
   }
 
-  /** Remove this cat's element from the DOM. */
   destroy(): void {
     this.el.remove()
   }
@@ -127,11 +123,9 @@ export class PetView {
     this.contentBox = maxx < 0 ? null : { x: minx, y: miny, w: maxx - minx + 1, h: maxy - miny + 1 }
   }
 
-  /**
-   * Align the floor once per animation using the lowest opaque pixel across ALL
-   * frames. Doing it per-frame made wagging tails / shifting limbs bounce the
-   * whole sprite; a per-animation offset keeps a stable ground line.
-   */
+  // 모든 프레임에 걸친 가장 아래 불투명 픽셀로 바닥을 애니메이션당 한 번 맞춘다. 프레임마다
+  // 하면 꼬리/팔다리 움직임에 스프라이트 전체가 들썩였다 — 애니당 오프셋이라야 ground line이
+  // 안정적이다.
   private computeFloor(): void {
     if (!this.img || !this.anim) return
     const F = this.frameSize

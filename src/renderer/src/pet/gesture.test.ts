@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { reduce, type Effect, type GestureEvent, type GestureState } from './gesture'
 
-// The reducer is generic over the cat ref; a string stands in for a cat here.
+// reducer는 cat ref에 대해 제네릭; 여기선 string으로 대역.
 type Cat = string
 
 const idle: GestureState<Cat> = { kind: 'idle' }
 
-/** Thread a sequence of events through reduce, collecting per-step results. */
+// 이벤트 열을 reduce에 흘려 스텝별 결과 수집.
 function run(
   start: GestureState<Cat>,
   events: GestureEvent<Cat>[]
@@ -21,7 +21,7 @@ function run(
   return { state, effects }
 }
 
-// Event builders (defaults keep tests terse; override per case).
+// 이벤트 빌더 (기본값으로 테스트를 간결하게; 케이스마다 override).
 const down = (x: number, hit: { cat?: Cat | null; onBowl?: boolean }, bowlX = 0): GestureEvent<Cat> => ({
   type: 'POINTER_DOWN',
   x,
@@ -108,7 +108,7 @@ describe('gesture — bowl', () => {
 
   it('down → move >4px → bowl drag: TRASH visible + SET_BOWL_X live, PERSIST on up', () => {
     const { state, effects } = run(idle, [down(50, { onBowl: true }, 40), move(70), up(70)])
-    // grabDx = 50 - 40 = 10 ; SET_BOWL_X carries raw (70 - 10 = 60), executor clamps.
+    // grabDx = 50 - 40 = 10 ; SET_BOWL_X는 raw(70 - 10 = 60)를 싣고 executor가 clamp.
     expect(effects[1]).toEqual([
       { type: 'TRASH', visible: true },
       { type: 'SET_BOWL_X', x: 60 },
@@ -186,7 +186,7 @@ describe('gesture — holding food', () => {
 
   it('move during holdingPressed still feeds and keeps the press', () => {
     const { state, effects } = run(holding, [down(50, { onBowl: true }), move(60)])
-    // The press is still in progress (decided on up), and the move feeds.
+    // press는 아직 진행 중(up에서 결정)이고, move는 먹이질을 한다.
     expect(effects[1]).toEqual([
       { type: 'UPDATE_FEED', x: 60, y: 0 },
       { type: 'SET_CAPTURE', on: true }
@@ -244,7 +244,7 @@ describe('gesture — BOWL_REMOVED mid-gesture', () => {
       down(50, { onBowl: true }),
       { type: 'BOWL_REMOVED' }
     ])
-    // holdingPressed is "holding" (not bowlActive), so only CLEAR_FEEDING + capture.
+    // holdingPressed는 "holding"(bowlActive 아님)이라 CLEAR_FEEDING + capture만.
     expect(effects[1]).toEqual([
       { type: 'CLEAR_FEEDING' },
       { type: 'SET_CAPTURE', on: false }

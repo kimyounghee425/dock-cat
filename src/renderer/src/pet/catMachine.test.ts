@@ -14,11 +14,8 @@ import {
 } from './__fixtures__/script'
 import { goldenFrames } from './__fixtures__/cat-golden'
 
-// ── facade-equivalent driver ─────────────────────────────────────────────────
-// Mirrors how CatEngine (Phase 2) will drive the actor: every send is followed
-// by a drain of pendingAfterTransition (D4). Here it also lets us count + verify
-// onEaten callback firing for the parity script.
-
+// ── facade와 동등한 드라이버 ──
+// CatEngine이 actor를 구동하는 방식을 그대로 모사: 매 send 뒤 pendingAfterTransition을 drain.
 function makeActor(opts: {
   startX?: number
   sleepAfter?: number
@@ -35,7 +32,7 @@ function makeActor(opts: {
     }
   }).start()
 
-  // Single send path + drain (the Phase-2 facade contract).
+  // 단일 send 경로 + drain (facade 계약).
   const send = (event: Parameters<typeof actor.send>[0]): void => {
     actor.send(event)
     let pending = actor.getSnapshot().context.pendingAfterTransition
@@ -51,7 +48,7 @@ function makeActor(opts: {
   return { actor, send, ctx, value }
 }
 
-/** Drive the new machine through the shared script, sampling a frame per TICK. */
+// 머신을 공유 스크립트로 구동, TICK마다 프레임 샘플.
 function runMachine(steps: Step[] = script): Frame[] {
   const a = makeActor({ rng: mulberry32(SEED) })
   const frames: Frame[] = []
@@ -110,7 +107,7 @@ describe('catMachine golden-master parity (P1)', () => {
   it('reproduces the old CatEngine frame sequence byte-for-byte', () => {
     const frames = runMachine(script)
     expect(frames.length).toBe(goldenFrames.length)
-    // Compare frame-by-frame so the first divergence is reported precisely.
+    // 프레임별 비교 → 첫 divergence를 정확히 보고.
     for (let i = 0; i < goldenFrames.length; i++) {
       expect(frames[i], `frame ${i}`).toEqual(goldenFrames[i])
     }
@@ -123,15 +120,14 @@ describe('catMachine transitions (§4.7)', () => {
     expect(a.value()).toBe('awake')
     a.send({ type: 'SET_FOOD_TARGET', x: 1000 })
     expect(a.value()).toEqual({ feeding: 'hopping' })
-    // Hops settle into the on_hind beg pose after travelling. Tick generously
-    // and confirm the cat reaches + holds the beg pose (between hops it shows a
-    // jump frame, so assert it lands on on_hind at least once it has arrived).
+    // hop으로 이동한 뒤 on_hind beg pose로 정착. 넉넉히 tick하며 begging에 도달하는지 확인
+    // (hop 사이엔 jump 프레임이라, 도착해서 begging 하위상태가 되는 순간을 본다).
     let begging = false
     for (let i = 0; i < 200 && !begging; i++) {
       tick(a, 1)
       if ((a.value() as { feeding?: string }).feeding === 'begging') begging = true
     }
-    // The substate is load-bearing: arriving flips hopping → begging.
+    // 하위상태가 load-bearing: 도착하면 hopping → begging으로 전환.
     expect(begging).toBe(true)
     expect(a.ctx().animKey).toBe('on_hind')
     a.send({ type: 'SET_FOOD_TARGET', x: null })
@@ -142,15 +138,14 @@ describe('catMachine transitions (§4.7)', () => {
   it('awake → eating.traveling → chewing → awake with onEaten called exactly once', () => {
     const a = makeActor()
     let calls = 0
-    // Pellet placed far to the right so the cat must HOP to reach it: this
-    // genuinely exercises the `traveling` substate (arc integration) before it
-    // arrives and transitions to `chewing`.
+    // pellet을 멀리 오른쪽에 둬서 HOP으로 가야만 도달 → `traveling` 하위상태(arc 적분)를
+    // 실제로 거친 뒤 `chewing`으로 전환되는지 확인.
     a.send({ type: 'GO_EAT', x: 900, onEaten: () => calls++ })
     expect(a.value()).toEqual({ eating: 'traveling' })
-    expect(a.ctx().animKey).toMatch(/^jump_/) // hopping, not yet eating
+    expect(a.ctx().animKey).toMatch(/^jump_/) // hopping, 아직 먹기 전
     expect(a.ctx().eatRemaining).toBe(0)
 
-    // Travel until it arrives and starts chewing.
+    // 도착해서 chewing 시작할 때까지 travel.
     let reachedChewing = false
     for (let i = 0; i < 120 && !reachedChewing; i++) {
       tick(a, 1)
@@ -161,7 +156,7 @@ describe('catMachine transitions (§4.7)', () => {
     expect(a.ctx().animKey).toMatch(/^eat_/)
     expect(a.ctx().eatRemaining).toBeGreaterThan(0)
 
-    // Chew to completion → back to awake, callback fired exactly once.
+    // chew 완료 → awake로 복귀, 콜백은 정확히 1회.
     tick(a, 60)
     expect(a.value()).toBe('awake')
     expect(calls).toBe(1)
@@ -171,8 +166,8 @@ describe('catMachine transitions (§4.7)', () => {
 
   it('eating: pellet already underfoot → straight to chewing (eat_front)', () => {
     const a = makeActor()
-    // Sprite CENTER (startX + displaySize/2) over the pellet → within
-    // EAT_ONTOP_THRESHOLD → eats front-facing immediately, no travel hop.
+    // 스프라이트 CENTER(startX + displaySize/2)가 pellet 위 → EAT_ONTOP_THRESHOLD 이내 →
+    // travel hop 없이 즉시 정면(front)으로 먹는다.
     const onTopX = START_X + cat.displaySize / 2
     a.send({ type: 'GO_EAT', x: onTopX, onEaten: () => {} })
     expect(a.value()).toEqual({ eating: 'chewing' })
@@ -225,8 +220,8 @@ describe('catMachine transitions (§4.7)', () => {
     const a = makeActor()
     let outer = 0
     let reentered = false
-    const onTopX = START_X + cat.displaySize / 2 // center over pellet → eat now
-    // The eat callback re-assigns the cat to a NEW pellet (PetWorld pattern).
+    const onTopX = START_X + cat.displaySize / 2 // pellet 위 → 즉시 먹기
+    // eat 콜백이 고양이를 새 pellet에 재배정(PetWorld 패턴).
     a.send({
       type: 'GO_EAT',
       x: onTopX,
@@ -234,35 +229,32 @@ describe('catMachine transitions (§4.7)', () => {
         outer++
         if (!reentered) {
           reentered = true
-          // Re-entrant assignment from inside the callback.
+          // 콜백 안에서의 재진입 배정.
           a.send({ type: 'GO_EAT', x: onTopX, onEaten: () => {} })
         }
       }
     })
-    // Tick until the first eat completes and fires its callback (which re-enters
-    // goEat). Assert the moment after: the cb fired exactly once and the
-    // re-entrant GO_EAT was processed from awake (so we're eating again, not
-    // stuck/double-firing).
+    // 첫 eat가 완료돼 콜백(→ goEat 재진입)을 발화할 때까지 tick. 직후를 단언: 콜백은 정확히
+    // 1회, 재진입 GO_EAT는 awake에서 처리됨(고착/이중발화 아니라 다시 먹는 중).
     for (let i = 0; i < 60 && outer === 0; i++) tick(a, 1)
     expect(outer).toBe(1)
     expect(reentered).toBe(true)
-    // The re-entrant GO_EAT (pellet underfoot) was processed from awake and is
-    // now eating again — chewing immediately since it's on top. No double-fire.
+    // 재진입 GO_EAT(발밑 pellet)가 awake에서 처리돼 다시 먹는 중 — 위에 있으니 즉시 chewing. 이중발화 없음.
     expect(a.value()).toEqual({ eating: 'chewing' })
     expect(a.ctx().eatRemaining).toBeGreaterThan(0)
   })
 
   it('awake mid-startled-leap → SLEEP_NOW clears jump/y (no frozen-aloft cat)', () => {
     const a = makeActor()
-    // Enter a startled leap: drag then drop → arcing jump in awake.
+    // 놀란 도약 진입: drag 후 drop → awake에서 arc jump.
     a.send({ type: 'DRAG_START' })
     a.send({ type: 'DRAG_END' })
     expect(a.value()).toBe('awake')
-    // A couple ticks into the arc: airborne (y > 0, jump active).
+    // arc 두어 tick: 공중(y > 0, jump active).
     tick(a, 2)
     expect(a.ctx().y).toBeGreaterThan(0)
     expect(a.ctx().jump.active).toBe(true)
-    // Force sleep mid-leap → must land cleanly (old sleepNow clears jump/y).
+    // 도약 중 강제 수면 → 깔끔히 착지해야(jump/y 정리).
     a.send({ type: 'SLEEP_NOW' })
     expect(a.value()).toBe('asleep')
     expect(a.ctx().y).toBe(0)
@@ -271,15 +263,15 @@ describe('catMachine transitions (§4.7)', () => {
   })
 
   it('SET_SLEEP_AFTER resets inactivity only when awake', () => {
-    // Awake: updates sleepAfter AND zeroes inactivity (old setSleepAfter).
+    // awake: sleepAfter 갱신 + inactivity 0으로.
     const a = makeActor({ sleepAfter: 100 })
-    tick(a, 10) // accrue some inactivity
+    tick(a, 10) // inactivity 좀 쌓기
     expect(a.ctx().inactivity).toBeGreaterThan(0)
     a.send({ type: 'SET_SLEEP_AFTER', sec: 50 })
     expect(a.ctx().sleepAfter).toBe(50)
     expect(a.ctx().inactivity).toBe(0)
 
-    // Asleep: updates sleepAfter but must NOT touch inactivity.
+    // asleep: sleepAfter는 갱신하되 inactivity는 건드리지 않아야.
     const b = makeActor({ sleepAfter: 0.01 })
     tick(b, 1)
     expect(b.value()).toBe('asleep')
@@ -290,12 +282,12 @@ describe('catMachine transitions (§4.7)', () => {
   })
 
   it('awake mid-leap → inactivity timeout also clears jump/y', () => {
-    // sleepAfter tiny so the very next tick crosses the threshold while airborne.
+    // sleepAfter를 아주 작게 → 공중에 있는 바로 다음 tick에 임계를 넘는다.
     const a = makeActor({ sleepAfter: 0.01 })
     a.send({ type: 'DRAG_START' })
     a.send({ type: 'DRAG_END' })
     expect(a.ctx().jump.active).toBe(true)
-    tick(a, 1) // inactivity + dt ≥ sleepAfter → fall asleep this tick
+    tick(a, 1) // inactivity + dt ≥ sleepAfter → 이 tick에 잠듦
     expect(a.value()).toBe('asleep')
     expect(a.ctx().y).toBe(0)
     expect(a.ctx().jump.active).toBe(false)

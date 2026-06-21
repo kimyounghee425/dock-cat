@@ -26,7 +26,7 @@ export function SettingsPanel(): JSX.Element {
     update({ counts: { ...cfg.counts, [color]: clamped } })
   }
 
-  // Crop the sit-idle frame (row 19, col 0) out of the 14×72 / 64px sheet.
+  // 14×72 / 64px 시트에서 sit-idle 프레임(row 19, col 0)을 crop.
   const PREVIEW = 48
   const s = PREVIEW / 64
   const cropStyle = (id: CatColor): CSSProperties => ({

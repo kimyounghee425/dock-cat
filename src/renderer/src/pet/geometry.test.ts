@@ -16,19 +16,19 @@ describe('pointInRect', () => {
   })
 
   it('is false for a point outside on each side', () => {
-    expect(pointInRect({ x: 9, y: 30 }, r)).toBe(false) // left of
-    expect(pointInRect({ x: 31, y: 30 }, r)).toBe(false) // right of
-    expect(pointInRect({ x: 20, y: 19 }, r)).toBe(false) // above
-    expect(pointInRect({ x: 20, y: 41 }, r)).toBe(false) // below
+    expect(pointInRect({ x: 9, y: 30 }, r)).toBe(false)
+    expect(pointInRect({ x: 31, y: 30 }, r)).toBe(false)
+    expect(pointInRect({ x: 20, y: 19 }, r)).toBe(false)
+    expect(pointInRect({ x: 20, y: 41 }, r)).toBe(false)
   })
 
   it('is INCLUSIVE on every edge and corner (matches original >=/<=)', () => {
-    expect(pointInRect({ x: 10, y: 30 }, r)).toBe(true) // left edge
-    expect(pointInRect({ x: 30, y: 30 }, r)).toBe(true) // right edge
-    expect(pointInRect({ x: 20, y: 20 }, r)).toBe(true) // top edge
-    expect(pointInRect({ x: 20, y: 40 }, r)).toBe(true) // bottom edge
-    expect(pointInRect({ x: 10, y: 20 }, r)).toBe(true) // top-left corner
-    expect(pointInRect({ x: 30, y: 40 }, r)).toBe(true) // bottom-right corner
+    expect(pointInRect({ x: 10, y: 30 }, r)).toBe(true)
+    expect(pointInRect({ x: 30, y: 30 }, r)).toBe(true)
+    expect(pointInRect({ x: 20, y: 20 }, r)).toBe(true)
+    expect(pointInRect({ x: 20, y: 40 }, r)).toBe(true)
+    expect(pointInRect({ x: 10, y: 20 }, r)).toBe(true)
+    expect(pointInRect({ x: 30, y: 40 }, r)).toBe(true)
   })
 })
 
@@ -51,7 +51,7 @@ describe('pickTopmost', () => {
   })
 
   it('picks the topmost (last in draw order) when candidates overlap', () => {
-    // Draw order: index 0 first/bottom, later indices on top.
+    // draw 순서: index 0이 맨 아래, 뒤 index가 위.
     const candidates = [
       { rect: rect(0, 0, 100, 100), ref: 'bottom' },
       { rect: rect(0, 0, 100, 100), ref: 'middle' },
@@ -65,7 +65,7 @@ describe('pickTopmost', () => {
       { rect: rect(0, 0, 100, 100), ref: 'bottom-wide' },
       { rect: rect(200, 200, 300, 300), ref: 'top-elsewhere' }
     ]
-    // The later candidate is on top but not under the point → the earlier one wins.
+    // 뒤 후보가 위에 있지만 point 아래가 아님 → 앞 후보가 이긴다.
     expect(pickTopmost(candidates, { x: 50, y: 50 })).toBe('bottom-wide')
   })
 
@@ -104,7 +104,7 @@ describe('clampX', () => {
 describe('exceedsDragThreshold', () => {
   it('is false at exactly the threshold (4px is still a click)', () => {
     expect(exceedsDragThreshold(100, 104)).toBe(false)
-    expect(exceedsDragThreshold(100, 96)).toBe(false) // exactly 4 in the negative direction
+    expect(exceedsDragThreshold(100, 96)).toBe(false) // 음의 방향으로 정확히 4
   })
 
   it('is true just past the threshold (5px is a drag)', () => {
@@ -112,7 +112,7 @@ describe('exceedsDragThreshold', () => {
   })
 
   it('uses absolute distance, so a negative delta past threshold is a drag', () => {
-    expect(exceedsDragThreshold(100, 95)).toBe(true) // delta -5 → |5| > 4
+    expect(exceedsDragThreshold(100, 95)).toBe(true) // delta -5 → |5| > 4 (음수 부호 무관)
   })
 
   it('is false for no movement', () => {
@@ -120,7 +120,7 @@ describe('exceedsDragThreshold', () => {
   })
 
   it('honours a custom threshold', () => {
-    expect(exceedsDragThreshold(0, 10, 10)).toBe(false) // exactly 10
+    expect(exceedsDragThreshold(0, 10, 10)).toBe(false) // 정확히 10
     expect(exceedsDragThreshold(0, 11, 10)).toBe(true)
   })
 })

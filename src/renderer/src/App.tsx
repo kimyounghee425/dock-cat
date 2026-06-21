@@ -2,10 +2,7 @@ import { useEffect } from 'react'
 import { PetStage } from './PetStage'
 import { SettingsPanel } from './SettingsPanel'
 
-/**
- * One renderer build, two windows: the transparent overlay (pet) and the
- * settings window. They're distinguished by the URL hash set in the main process.
- */
+// 단일 renderer 빌드, 두 창: 투명 overlay(펫)와 설정 창. main 프로세스가 설정한 URL hash로 구분.
 export function App(): JSX.Element {
   const isSettings = window.location.hash.replace('#', '') === 'settings'
 

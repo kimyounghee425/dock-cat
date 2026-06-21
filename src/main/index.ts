@@ -15,7 +15,7 @@ app.whenReady().then(() => {
   })
 })
 
-// Keep running in the tray even when all windows are closed.
+// 모든 창이 닫혀도 트레이에서 계속 실행.
 app.on('window-all-closed', () => {
-  // no-op: the tray keeps the app alive; quit only via the tray menu
+  // no-op: 트레이가 앱을 살려둔다; 종료는 트레이 메뉴로만
 })
