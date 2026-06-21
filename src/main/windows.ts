@@ -39,7 +39,7 @@ export function createOverlay(): void {
   })
 
   if (process.platform === 'darwin') {
-    // macOS-only: highest float level + show on every Space / full-screen app
+    // macOS 전용: 최상위 float 레벨 + 모든 Space / 전체화면 앱 위에 표시
     overlay.setAlwaysOnTop(true, 'screen-saver')
     overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   } else {

@@ -27,11 +27,11 @@ describe('CatEngine facade behaviour (D2/D4/D8/D9)', () => {
 
   it('mirrors x/y/animKey into plain fields (D9) updated each tick', () => {
     const e = make()
-    expect(e.animKey).toBe('lick_sit') // initial calm pose from startIdle()
+    expect(e.animKey).toBe('lick_sit') // startIdle()의 초기 calm pose
     expect(e.y).toBe(0)
     e.startDrag()
     expect(e.animKey).toBe('run_up')
-    e.endDrag() // startled leap → mid-arc on the next ticks
+    e.endDrag() // 놀란 도약 → 다음 tick들에서 arc 중간
     e.tick(0.05)
     e.tick(0.05)
     expect(e.y).toBeGreaterThan(0)
@@ -56,7 +56,7 @@ describe('CatEngine facade behaviour (D2/D4/D8/D9)', () => {
   it('onEaten fires exactly once on normal completion (D4 drain)', () => {
     const e = make()
     let calls = 0
-    // Pellet underfoot → eats immediately, completes after the eat anim.
+    // pellet이 발밑 → 즉시 먹기 시작, eat 애니 후 완료.
     const onTopX = START_X + cat.displaySize / 2
     e.goEat(onTopX, () => calls++)
     for (let i = 0; i < 60 && e.isEating(); i++) e.tick(0.05)
@@ -69,7 +69,7 @@ describe('CatEngine facade behaviour (D2/D4/D8/D9)', () => {
     let calls = 0
     e.goEat(900, () => calls++)
     expect(e.isEating()).toBe(true)
-    e.startDrag() // pulled away mid-travel
+    e.startDrag() // travel 도중 끌어냄
     e.endDrag()
     for (let i = 0; i < 30; i++) e.tick(0.05)
     expect(calls).toBe(0)
@@ -84,15 +84,15 @@ describe('CatEngine facade behaviour (D2/D4/D8/D9)', () => {
       calls++
       if (!reentered) {
         reentered = true
-        e.goEat(onTopX, cb) // re-assign from inside the callback (PetWorld pattern)
+        e.goEat(onTopX, cb) // 콜백 안에서 재배정(PetWorld 패턴)
       }
     }
     e.goEat(onTopX, cb)
-    // Tick until the first eat fires its callback (which re-enters goEat).
+    // 첫 eat가 콜백을 발화(→ goEat 재진입)할 때까지 tick.
     for (let i = 0; i < 60 && calls === 0; i++) e.tick(0.05)
     expect(calls).toBe(1)
     expect(reentered).toBe(true)
-    // The re-entrant assignment landed and the cat is eating again — not stuck.
+    // 재진입 배정이 안착해 다시 먹는 중 — 고착 아님.
     expect(e.isEating()).toBe(true)
   })
 
@@ -100,9 +100,8 @@ describe('CatEngine facade behaviour (D2/D4/D8/D9)', () => {
     const e = make()
     const animBefore = e.animKey
     expect(() => e.dispose()).not.toThrow()
-    // The subscription is gone, so the mirrored fields freeze at their last value
-    // (the actor no longer emits). We don't poke the stopped actor here — that
-    // would just log XState's "sent to stopped actor" warning.
+    // 구독이 사라져 미러링 필드는 마지막 값에 고정(actor가 더는 emit 안 함). 멈춘 actor를
+    // 여기서 건드리지 않는다 — XState의 "sent to stopped actor" 경고만 찍힐 뿐.
     expect(e.animKey).toBe(animBefore)
   })
 })

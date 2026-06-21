@@ -1,23 +1,20 @@
-// Pure, framework-free config module shared by main, preload, and renderer.
-// MUST NOT import electron or any node/renderer-only API — it gets bundled
-// into the renderer too.
+// main·preload·renderer가 공유하는 순수 config 모듈. renderer에도 번들되므로 electron이나
+// node/renderer 전용 API를 import하면 안 된다.
 
 export type CatColor = 'ginger' | 'grey' | 'white'
 export type CatCounts = Record<CatColor, number>
 export type Lang = 'ko' | 'en'
 
-/** Persisted settings. sleepAfterMin = null means "never sleep". */
+// 영속 설정. sleepAfterMin = null이면 "잠 안 잠".
 export interface PetConfig {
   counts: CatCounts
   sleepAfterMin: number | null
-  /** When true, clicking a sleeping cat won't wake it. */
+  // true면 자는 고양이를 클릭해도 깨우지 않는다.
   noWake: boolean
   lang: Lang
-  /** Start DockCat automatically on login. */
   launchAtLogin: boolean
-  /** When true, a draggable food bowl is shown on the floor. */
   bowlEnabled: boolean
-  /** Floor x of the bowl; null means "default position" (resolved in the renderer). */
+  // 밥그릇 floor x; null이면 "기본 위치"(renderer에서 해석).
   bowlX: number | null
 }
 
@@ -42,35 +39,26 @@ const clampCount = (n: unknown): number =>
 
 const isLang = (v: unknown): v is Lang => v === 'ko' || v === 'en'
 
-/** Loose: accepts null or any finite number (preserves legacy config.json values). */
+// Loose: null 또는 임의의 유한수 허용(legacy config.json 값 보존).
 const isFiniteSleep = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && Number.isFinite(v))
 
-/** Strict: only the UI-allowed options [1,5,10,30,null]. */
+// Strict: UI가 허용하는 옵션 [1,5,10,30,null]만.
 const isOptionSleep = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && SLEEP_OPTIONS.includes(v))
 
-/**
- * bowlX accepts null or any finite number. Screen-width clamping is NOT done
- * here (the main process doesn't know the screen size) — the renderer/world
- * clamps when placing the bowl.
- */
+// bowlX는 null 또는 임의 유한수. 화면 폭 clamp는 여기서 안 한다(main은 화면 크기를
+// 모름) — 밥그릇 배치 시 renderer/world가 clamp.
 const isBowlX = (v: unknown): v is number | null =>
   v === null || (typeof v === 'number' && Number.isFinite(v))
 
-/**
- * Represents a validated IPC partial where counts may be sparse (only the
- * colors the sender actually specified).
- */
+// counts가 sparse할 수 있는(보낸 쪽이 지정한 색상만) 검증된 IPC partial.
 export type PartialPetConfig = Omit<Partial<PetConfig>, 'counts'> & {
   counts?: Partial<CatCounts>
 }
 
-/**
- * Turn any input (e.g. parsed config.json, possibly from an older version with
- * missing fields) into a fully-valid PetConfig, filling defaults.
- * sleepAfterMin: accepts null or ANY finite number (loose — preserves legacy values).
- */
+// 임의 입력(예: 파싱된 config.json, 필드 빠진 구버전일 수 있음)을 기본값으로 채워 완전한
+// PetConfig로 변환. sleepAfterMin은 loose(null 또는 임의 유한수 — legacy 값 보존).
 export function normalizeConfig(raw: unknown): PetConfig {
   const r = (raw ?? {}) as Record<string, unknown>
 
@@ -83,7 +71,7 @@ export function normalizeConfig(raw: unknown): PetConfig {
       white: clampCount(c.white)
     }
   } else if (typeof r.color === 'string' && CAT_COLORS.includes(r.color as CatColor)) {
-    // Backward-compat: old single-color config → that color gets count 1.
+    // 하위호환: 옛 단일-색상 config → 그 색상 count 1.
     counts = { ginger: 0, grey: 0, white: 0 }
     counts[r.color as CatColor] = 1
   } else {
@@ -107,13 +95,10 @@ export function normalizeConfig(raw: unknown): PetConfig {
   }
 }
 
-/**
- * Validate an incoming IPC partial: only includes keys that are present AND
- * valid. Never throws.
- * - counts: only colors actually present in the input are included (sparse —
- *   missing colors are NOT defaulted to 0, so the caller can deep-merge safely).
- * - sleepAfterMin: strict whitelist (UI-originated values only).
- */
+// 들어온 IPC partial 검증: 존재하고 유효한 키만 포함. 절대 throw 안 함.
+// - counts: 입력에 실제 있는 색상만 포함(sparse — 빠진 색상을 0으로 채우지 않아 호출부가
+//   안전하게 deep-merge 가능).
+// - sleepAfterMin: strict 화이트리스트(UI 출처 값만).
 export function normalizePartialConfig(raw: unknown): PartialPetConfig {
   const r = (raw ?? {}) as Record<string, unknown>
   const out: PartialPetConfig = {}

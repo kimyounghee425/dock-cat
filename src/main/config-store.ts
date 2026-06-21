@@ -20,7 +20,7 @@ export function loadConfig(): void {
     const parsed = JSON.parse(readFileSync(configPath(), 'utf-8'))
     config = normalizeConfig(parsed)
   } catch {
-    // first run / missing file → keep defaults (en)
+    // 첫 실행 / 파일 없음 → 기본값(en) 유지
   }
 }
 
@@ -28,6 +28,6 @@ export function saveConfig(): void {
   try {
     writeFileSync(configPath(), JSON.stringify(config))
   } catch {
-    // non-fatal: settings just won't persist this session
+    // non-fatal: 이번 세션에만 설정이 영속되지 않을 뿐
   }
 }

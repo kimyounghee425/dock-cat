@@ -12,35 +12,31 @@ import {
   type CatContext
 } from './behaviors'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// catMachine — the cat behaviour FSM (the canonical, single-source transition
-// map; design P3/§4.3). This file owns "what transitions exist"; the PURE
-// per-behaviour computation lives in `behaviors.ts` ("what each behaviour does").
+// catMachine — 고양이 행동 FSM, 전이의 단일 출처(canonical transition map).
+// 이 파일은 "어떤 전이가 있는가"를 소유; 순수한 행동 계산은 behaviors.ts("각 행동이
+// 무엇을 하는가")에 있다.
 //
-// State topology (paste into https://stately.ai/viz to visualize):
+// State 토폴로지 (https://stately.ai/viz 에 붙여넣어 시각화):
 //
 //   cat
 //   ├── awake            [initial]   TICK: inactivity→sleep; walk/leap physics
-//   │   └── (posing · walking · airborne · decide are collapsed: under the
-//   │        TICK-driven model these are pose/timer phases, not distinct states)
+//   │   └── (posing · walking · airborne · decide는 합쳐짐: TICK 구동 모델에선
+//   │        별개 state가 아니라 pose/timer 단계일 뿐)
 //   ├── asleep                       CLICK[canWake]→awake(hiss); WAKE_NOW; DRAG_START
 //   ├── dragging                     DRAG_MOVE; DRAG_END→asleep(sleepDrag) | awake(leap)
-//   ├── feeding                      exit: clear gather state
-//   │   ├── hopping     [initial]    arc → land → feedStep → (begging | next hop)
-//   │   └── begging                  on_hind, 0.2s re-check → (hopping | re-beg)
-//   └── eating                       exit: clear jump/y (callback per-transition)
-//       ├── traveling   [initial]    arc → land → eatStep → (chewing | next hop)
-//       └── chewing                  eat anim countdown → awake (fires onEaten, D4)
+//   ├── feeding                      exit: gather 상태 정리
+//   │   ├── hopping     [initial]    arc → 착지 → feedStep → (begging | 다음 hop)
+//   │   └── begging                  on_hind, 0.2s 재확인 → (hopping | 재-beg)
+//   └── eating                       exit: jump/y 정리 (콜백은 전이별 처리)
+//       ├── traveling   [initial]    arc → 착지 → eatStep → (chewing | 다음 hop)
+//       └── chewing                  eat 애니 카운트다운 → awake (onEaten 발화)
 //
-// Continuous physics is driven by TICK{dt} (design D1 — no `after`); context is
-// updated only via `assign` (D6); the eat callback follows the
-// pendingAfterTransition drain pattern (D4): exit never clears onEatenCb;
-// completion captures it into the queue, the facade drains + fires it after the
-// transition settles.
-// ─────────────────────────────────────────────────────────────────────────────
+// 연속 물리는 TICK{dt}로 구동(`after` 미사용); context는 `assign`으로만 갱신.
+// eat 콜백은 pendingAfterTransition drain 패턴: exit는 onEatenCb를 절대 지우지 않고,
+// 완료 시 큐에 담아 facade가 전이가 가라앉은 뒤 drain·발화한다.
 
-// Re-exported so existing importers (tests) keep `import { CatContext } from
-// './catMachine'` working; the type itself is defined alongside the behaviours.
+// 재export — 기존 import(`import { CatContext } from './catMachine'`)가 계속 동작하게.
+// 타입 자체는 behaviors.ts에 정의.
 export type { CatContext } from './behaviors'
 
 export interface CatInput {
@@ -66,8 +62,6 @@ export type CatEvent =
   | { type: 'SET_NO_WAKE'; on: boolean }
   | { type: 'CLEAR_PENDING_CALLBACKS' }
 
-// ── machine ──────────────────────────────────────────────────────────────────
-
 export const catMachine = setup({
   types: {
     context: {} as CatContext,
@@ -75,13 +69,13 @@ export const catMachine = setup({
     input: {} as CatInput
   },
   actions: {
-    /** awake TICK: integrate inactivity, walk/jump physics, and pose timers. */
+    // awake TICK: inactivity 적분, walk/jump 물리, pose 타이머.
     awakeTick: assign(({ context, event }) => {
       if (event.type !== 'TICK') return {}
       const dt = event.dt
       const inactivity = context.inactivity + dt
 
-      // Mid-leap: integrate the arc, then count the pose timer (queued panic run).
+      // 도약 중: arc를 적분한 뒤 pose 타이머(큐된 패닉 run)를 센다.
       if (context.jump.active) {
         const arc = tickArc(context, dt)
         const ctx2: CatContext = {
@@ -92,14 +86,14 @@ export const catMachine = setup({
           jump: arc.ended ? NO_JUMP : { ...context.jump, t: context.jump.t + dt },
           remaining: context.remaining - dt
         }
-        // advance() picks the next pose (animKey/remaining/…); it must win over
-        // the integrated fields, so spread it LAST.
+        // advance()가 다음 pose(animKey/remaining/…)를 고른다; 적분 필드를 이겨야 하므로
+        // 마지막에 spread.
         if (ctx2.remaining <= 0)
           return { inactivity, x: ctx2.x, y: ctx2.y, jump: ctx2.jump, ...advance(ctx2) }
         return { inactivity, x: ctx2.x, y: ctx2.y, jump: ctx2.jump, remaining: ctx2.remaining }
       }
 
-      // Walking: integrate x with edge-turn.
+      // 보행: 가장자리 turn과 함께 x 적분.
       let x = context.x
       let facing = context.facing
       let animKey = context.animKey
@@ -122,19 +116,19 @@ export const catMachine = setup({
 
       const remaining = context.remaining - dt
       const ctx2: CatContext = { ...context, inactivity, x, facing, animKey, remaining }
-      // advance() picks the next pose; spread it LAST so it wins over edge-turn.
+      // advance()를 마지막에 spread해 edge-turn 결과를 이기게 한다.
       if (remaining <= 0) return { inactivity, x, facing, ...advance(ctx2) }
       return { inactivity, x, facing, animKey, remaining }
     }),
 
-    /** feeding.hopping mid-arc: integrate the jump parabola one frame. */
+    // feeding.hopping arc 중: jump 포물선 한 프레임 적분.
     feedArcIntegrate: assign(({ context, event }) => {
       if (event.type !== 'TICK') return {}
       const arc = tickArc(context, event.dt)
       return { x: arc.x, y: arc.y, jump: { ...context.jump, t: context.jump.t + event.dt } }
     }),
 
-    /** feeding hop landed: settle at the arc's end and run the next feedStep. */
+    // feeding hop 착지: arc 끝에 정착하고 다음 feedStep 실행.
     feedLandAndStep: assign(({ context, event }) => {
       if (event.type !== 'TICK') return {}
       const arc = tickArc(context, event.dt)
@@ -142,25 +136,25 @@ export const catMachine = setup({
       return { x: arc.x, y: 0, jump: NO_JUMP, ...feedStep(landed) }
     }),
 
-    /** feeding.begging re-check tick: decrement the 0.2s timer (no decision). */
+    // feeding.begging 재확인 tick: 0.2s 타이머 감산(결정 없음).
     begWait: assign(({ context, event }) => ({
       remaining: context.remaining - (event.type === 'TICK' ? event.dt : 0)
     })),
 
-    /** feeding.begging timer expired: re-run feedStep (re-beg or start a hop). */
+    // feeding.begging 타이머 만료: feedStep 재실행(재-beg 또는 hop 시작).
     begStep: assign(({ context, event }) => {
       const remaining = context.remaining - (event.type === 'TICK' ? event.dt : 0)
       return { remaining, ...feedStep({ ...context, remaining }) }
     }),
 
-    /** eating.traveling mid-arc: integrate the jump parabola one frame. */
+    // eating.traveling arc 중: jump 포물선 한 프레임 적분.
     eatArcIntegrate: assign(({ context, event }) => {
       if (event.type !== 'TICK') return {}
       const arc = tickArc(context, event.dt)
       return { x: arc.x, y: arc.y, jump: { ...context.jump, t: context.jump.t + event.dt } }
     }),
 
-    /** eating hop landed: settle at the arc's end and run the next eatStep. */
+    // eating hop 착지: arc 끝에 정착하고 다음 eatStep 실행.
     eatLandAndStep: assign(({ context, event }) => {
       if (event.type !== 'TICK') return {}
       const arc = tickArc(context, event.dt)
@@ -168,16 +162,14 @@ export const catMachine = setup({
       return { x: arc.x, y: 0, jump: NO_JUMP, ...eatStep(landed) }
     }),
 
-    /** eating.chewing tick: count down the one-shot eat animation. */
+    // eating.chewing tick: 1회성 eat 애니 카운트다운.
     chewCountdown: assign({
       eatRemaining: ({ context, event }) =>
         context.eatRemaining - (event.type === 'TICK' ? event.dt : 0)
     }),
 
-    /**
-     * Capture onEatenCb into the deferred queue, then clear eat ctx (D4 normal
-     * completion). The facade drains pendingAfterTransition after the transition.
-     */
+    // 정상 완료: onEatenCb를 deferred 큐에 담고 eat ctx 정리. 전이 후 facade가
+    // pendingAfterTransition을 drain한다.
     completeEat: assign(({ context }) => {
       const cb = context.onEatenCb
       return {
@@ -192,7 +184,7 @@ export const catMachine = setup({
       }
     }),
 
-    /** Abnormal eat exit (drag/sleep/cancel): drop the callback, do NOT fire it. */
+    // 비정상 탈출(drag/sleep/cancel): 콜백을 발화하지 않고 버린다.
     abortEat: assign({
       eatTargetX: null,
       onEatenCb: null,
@@ -204,29 +196,24 @@ export const catMachine = setup({
     fallAsleepAction: assign(({ context }) => fallAsleep(context))
   },
   guards: {
-    // Old engine increments inactivity by dt FIRST, then checks the threshold,
-    // so the sleep fires on the tick the threshold is crossed (not one later).
+    // dt를 FIRST 더한 뒤 임계를 검사 → 임계를 넘는 그 tick에 잠든다(한 tick 늦지 않게).
     isInactiveEnough: ({ context, event }) =>
       event.type === 'TICK' && context.inactivity + event.dt >= context.sleepAfter,
     canWake: ({ context }) => !context.noWake,
     wasSleepDrag: ({ context }) => context.sleepDrag,
 
-    // ── feeding/eating substate decision guards (pure geometry, no rng) ───────
-    /** Hopping: the current jump arc finishes on this tick. */
+    // ── feeding/eating 하위상태 결정 guard (순수 기하, rng 없음) ──
     feedArcEnding: ({ context, event }) =>
       event.type === 'TICK' &&
       context.jump.active &&
       (context.jump.t + event.dt) / context.jump.dur >= 1,
-    /** Begging: the 0.2s re-check timer expires on this tick. */
     feedBegExpires: ({ context, event }) =>
       event.type === 'TICK' && context.remaining - event.dt <= 0,
 
-    /** Traveling: the current jump arc finishes on this tick. */
     eatArcEnding: ({ context, event }) =>
       event.type === 'TICK' &&
       context.jump.active &&
       (context.jump.t + event.dt) / context.jump.dur >= 1,
-    /** Chewing: the one-shot eat animation completes on this tick. */
     chewDone: ({ context, event }) =>
       event.type === 'TICK' && context.eatRemaining > 0 && context.eatRemaining - event.dt <= 0
   }
@@ -256,14 +243,13 @@ export const catMachine = setup({
     onEatenCb: null,
     pendingAfterTransition: []
   }),
-  // Pick the initial calm pose exactly as the old constructor did (startIdle()).
+  // 초기 calm pose는 옛 생성자(startIdle())와 동일하게.
   entry: assign(({ context }) => startIdle(context)),
   initial: 'awake',
   on: {
-    // Default (non-awake states): update sleepAfter only. The `awake` state
-    // overrides this to ALSO reset inactivity — matching the old engine, which
-    // zeroes inactivity only when `mode === 'awake'`. No snapshot reads here:
-    // the current state's own handler decides, which IS the current truth.
+    // 기본(non-awake): sleepAfter만 갱신. awake state가 이를 오버라이드해 inactivity도
+    // 0으로 리셋한다(awake일 때만 0으로 하는 옛 동작). snapshot 읽기 없이, 현재 state의
+    // 핸들러가 곧 현재 진실이다.
     SET_SLEEP_AFTER: {
       actions: assign({
         sleepAfter: ({ context, event }) =>
@@ -282,8 +268,7 @@ export const catMachine = setup({
   states: {
     awake: {
       on: {
-        // Awake overrides the root handler: setting sleepAfter also resets the
-        // inactivity timer (old setSleepAfter() zeroes it only when mode==awake).
+        // awake는 root 핸들러를 오버라이드: sleepAfter 설정 시 inactivity 타이머도 리셋.
         SET_SLEEP_AFTER: {
           actions: assign({
             sleepAfter: ({ context, event }) =>
@@ -309,15 +294,14 @@ export const catMachine = setup({
         SLEEP_NOW: { target: 'asleep', actions: 'fallAsleepAction' },
         SET_FOOD_TARGET: [
           { guard: ({ event }) => event.type === 'SET_FOOD_TARGET' && event.x !== null, target: 'feeding' }
-          // SET_FOOD_TARGET(null) in awake is a no-op.
+          // awake에서 SET_FOOD_TARGET(null)은 no-op.
         ],
         GO_EAT: { target: 'eating' }
       }
     },
 
     asleep: {
-      // TICK is a no-op while asleep — the old engine returns early when not
-      // awake, so x/y/animKey/inactivity all stay frozen until woken.
+      // 자는 동안 TICK은 no-op — x/y/animKey/inactivity 모두 깰 때까지 정지.
       on: {
         TICK: {},
         CLICK: {
@@ -332,19 +316,19 @@ export const catMachine = setup({
           }))
         },
         WAKE_NOW: { target: 'awake', actions: 'enterAwakeIdle' },
-        // Dragging an asleep cat while "don't wake" is on carries it without
-        // waking (sleepDrag), keeping the sleep pose (old startDrag).
+        // "깨우지 말기"가 켜진 자는 고양이를 드래그하면 깨우지 않고 옮긴다(sleepDrag),
+        // sleep pose 유지.
         DRAG_START: {
           target: 'dragging',
           actions: assign({ sleepDrag: ({ context }) => context.noWake })
         }
-        // SET_FOOD_TARGET / GO_EAT ignored while asleep.
+        // 자는 동안 SET_FOOD_TARGET / GO_EAT 무시.
       }
     },
 
     dragging: {
       entry: assign(({ context }) => {
-        // "don't wake" + already asleep → carry without waking (keep sleep pose).
+        // "깨우지 말기" + 이미 자는 중 → 깨우지 않고 옮김(sleep pose 유지).
         const sleepDrag = context.sleepDrag
         return {
           inactivity: 0,
@@ -377,7 +361,7 @@ export const catMachine = setup({
           },
           {
             target: 'awake',
-            // Startled: arcing leap sideways, then bolt away (panic run queue).
+            // 놀람: 옆으로 포물선 도약 후 질주(패닉 run 큐).
             actions: assign(({ context }) => {
               const facing: Facing = context.rng() < 0.5 ? 'left' : 'right'
               const dir = facing === 'right' ? 1 : -1
@@ -410,10 +394,10 @@ export const catMachine = setup({
     },
 
     feeding: {
-      // Leaving feeding (any path) clears the gather state (design §4.3 exit).
+      // feeding을 떠나는 모든 경로에서 gather 상태를 정리(exit에 중앙화).
       exit: assign({ foodTargetX: null, jump: NO_JUMP, y: 0, moving: false, queue: [] }),
       initial: 'hopping',
-      // Entry decides the first hop/beg, matching setFoodTarget()'s feedStep().
+      // entry가 첫 hop/beg를 결정(옛 setFoodTarget()의 feedStep과 동일).
       entry: assign(({ context, event }) => {
         const foodTargetX = event.type === 'SET_FOOD_TARGET' ? event.x : context.foodTargetX
         const seeded: CatContext = {
@@ -429,13 +413,13 @@ export const catMachine = setup({
       on: {
         SET_FOOD_TARGET: [
           {
-            // null → leave feeding (exit action clears state) back to awake.
+            // null → feeding 떠나 awake로(exit가 상태 정리).
             guard: ({ event }) => event.type === 'SET_FOOD_TARGET' && event.x === null,
             target: 'awake',
             actions: 'enterAwakeIdle'
           },
           {
-            // New non-null target: just update foodTargetX; the substate re-checks.
+            // 새 non-null 타깃: foodTargetX만 갱신; 하위상태가 재확인.
             actions: assign({
               foodTargetX: ({ event, context }) =>
                 event.type === 'SET_FOOD_TARGET' ? event.x : context.foodTargetX
@@ -445,13 +429,12 @@ export const catMachine = setup({
         GO_EAT: { target: 'eating' },
         DRAG_START: { target: 'dragging', actions: assign({ sleepDrag: false }) },
         SLEEP_NOW: { target: 'asleep', actions: 'fallAsleepAction' }
-        // CLICK ignored (busy gathering).
+        // CLICK 무시(모이는 중).
       },
       states: {
-        // Mid-hop: integrate the arc each TICK; on the landing tick run feedStep
-        // (next hop or settle). The transient `always` routes to `begging` the
-        // moment feedStep stops jumping — covering both an immediate beg on entry
-        // (cat already near the food) and the final landing of a hop sequence.
+        // hop 중: 매 TICK arc 적분; 착지 tick에 feedStep(다음 hop 또는 정착). transient
+        // `always`가 feedStep이 jump를 멈추는 순간 begging으로 보낸다 — entry 즉시 beg
+        // (이미 먹이 근처)와 hop 시퀀스의 마지막 착지 둘 다 커버.
         hopping: {
           always: { guard: ({ context }) => !context.jump.active, target: 'begging' },
           on: {
@@ -461,8 +444,8 @@ export const catMachine = setup({
             ]
           }
         },
-        // Begging: hold on_hind, re-checking every 0.2s. If the target moved out
-        // of range, feedStep starts a hop → the transient routes back to hopping.
+        // on_hind 유지, 0.2s마다 재확인. 타깃이 범위를 벗어나면 feedStep이 hop을 시작 →
+        // transient가 다시 hopping으로 보낸다.
         begging: {
           always: { guard: ({ context }) => context.jump.active, target: 'hopping' },
           on: {
@@ -476,8 +459,8 @@ export const catMachine = setup({
     },
 
     eating: {
-      // Common physics cleanup on ANY exit; callback lifecycle is per-transition
-      // (D4): exit does NOT touch onEatenCb.
+      // 어떤 경로로 나가든 공통 물리 정리; 콜백 수명은 전이별 처리 — exit는 onEatenCb를
+      // 건드리지 않는다.
       exit: assign({ jump: NO_JUMP, y: 0 }),
       initial: 'traveling',
       entry: assign(({ context, event }) => {
@@ -507,18 +490,16 @@ export const catMachine = setup({
         }
       }),
       on: {
-        // These leave `eating` entirely (parent exit clears jump/y); the callback
-        // is dropped without firing (D4 abnormal exit).
+        // 이들은 eating을 완전히 떠난다(parent exit가 jump/y 정리); 콜백은 발화 없이 버림.
         CANCEL_EAT: { target: 'awake', actions: ['abortEat', 'enterAwakeIdle'] },
         DRAG_START: { target: 'dragging', actions: ['abortEat', assign({ sleepDrag: false })] },
         SLEEP_NOW: { target: 'asleep', actions: ['abortEat', 'fallAsleepAction'] }
-        // SET_FOOD_TARGET / CLICK ignored — committed to the pellet.
+        // SET_FOOD_TARGET / CLICK 무시 — pellet에 전념.
       },
       states: {
-        // Mid-hop toward the pellet: integrate the arc; on landing run eatStep
-        // (next hop or arrive). The transient routes to `chewing` once eatStep
-        // stops jumping — covering an immediate eat on entry (already on top) and
-        // the final landing of a travel sequence.
+        // pellet 쪽으로 hop 중: arc 적분; 착지 시 eatStep(다음 hop 또는 도착). transient가
+        // eatStep이 jump를 멈추면 chewing으로 보낸다 — entry 즉시 eat(이미 위)와 travel
+        // 시퀀스의 마지막 착지 둘 다 커버.
         traveling: {
           always: { guard: ({ context }) => !context.jump.active, target: 'chewing' },
           on: {
@@ -528,8 +509,7 @@ export const catMachine = setup({
             ]
           }
         },
-        // Chewing: play the one-shot eat anim. On completion fire the D4 deferred
-        // callback (capture → clear ctx → queue) and return to awake.
+        // 1회성 eat 애니 재생. 완료 시 deferred 콜백(캡처 → ctx 정리 → 큐)을 발화하고 awake로.
         chewing: {
           on: {
             TICK: [

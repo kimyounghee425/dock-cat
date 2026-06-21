@@ -1,6 +1,9 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
+import { clampX, pickTopmost, pointInRect } from './geometry'
+import { assignNearestFree, computeGather } from './feeding-logic'
+import { reduce, type Effect, type GestureState } from './gesture'
 import bowlPng from '../assets/bowl.png'
 import pelletPng from '../assets/pellet.png'
 
@@ -11,49 +14,34 @@ interface CatInstance {
   lastKey: string
 }
 
-/**
- * A pellet dropped on the floor. `assignedCat` is the single cat sent to eat it
- * (null = waiting for a free cat). Both timers are kept so destroy()/removal can
- * cancel them cleanly. (FD4/FD5)
- */
+// 바닥에 떨어진 pellet. `assignedCat`은 먹으러 보낸 단 한 마리(null = free 고양이 대기).
+// 두 타이머는 destroy()/제거 시 깔끔히 취소할 수 있게 들고 있는다.
 interface Pellet {
   el: HTMLImageElement
   x: number
   assignedCat: CatInstance | null
   expireTimer: ReturnType<typeof setTimeout>
-  /** True once the TTL fade started; blocks (re)assignment during the fade-out. */
+  // TTL fade가 시작되면 true; fade 동안 (재)배정을 막는다.
   expiring: boolean
-  /**
-   * Timeout id for the 400 ms fade-removal step, set only while expiring.
-   * Stored so destroy() / removePellet() can cancel it if the world tears down
-   * during the fade window (fix for issue #3). (FD5)
-   */
+  // 400ms fade 제거 단계의 타이머 id(expiring일 때만). teardown이 fade 도중 끼어들어
+  // 죽은 world에서 콜백이 터지지 않도록 destroy()/removePellet()이 취소할 수 있게 보관.
   fadeTimer: ReturnType<typeof setTimeout> | null
 }
 
-/** On-screen display size of the bowl (the art is a 64px frame). */
 const BOWL_SIZE = 76
-
-/** On-screen size of a food pellet (cursor-attached / floor). */
 const PELLET_SIZE = 20
 
-/**
- * Horizontal reach (left/right of the cursor) within which an awake cat will
- * notice held food and hop over to beg. Not user-configurable (per PRD).
- */
+// 깨어 있는 고양이가 들고 있는 먹이를 알아채고 다가오는 커서 좌우 반경(px). 비-사용자설정.
 const FOOD_RADIUS = 350
 
-/** Max pellets allowed on the floor at once; a 6th evicts the oldest. (FD5) */
+// 바닥에 동시에 허용되는 최대 pellet 수; 6번째는 가장 오래된 것을 축출.
 const MAX_PELLETS = 5
 
-/** A floor pellet auto-expires this many ms after being dropped if uneaten. (FD5) */
+// 안 먹힌 바닥 pellet이 떨어진 뒤 자동 소멸하기까지의 ms.
 const PELLET_TTL_MS = 30_000
 
-/**
- * Manages every cat on screen: spawning/removing per color counts, a single
- * rAF loop ticking all of them, centralized click-through + drag handling so
- * the cats don't fight over the mouse, and a center trash target for deletion.
- */
+// 화면의 모든 고양이를 관리: 색상별 카운트 spawn/제거, 단일 rAF 루프, 중앙 집중식
+// 클릭통과 + 드래그 처리(고양이끼리 마우스 다툼 방지), 삭제용 중앙 trash.
 export class PetWorld {
   private stage: HTMLElement
   private def: PetDefinition
@@ -69,26 +57,15 @@ export class PetWorld {
   private onBowlMoveCb: ((x: number) => void) | null = null
   private onBowlRemoveCb: (() => void) | null = null
 
+  // 현재 포인터를 캡처 중인지(= 클릭통과 OFF).
   private capturing = false
-  private down = false
-  private dragging = false
-  private downX = 0
-  private active: CatInstance | null = null
-  /** True while the current pointer gesture is repositioning the bowl (not feeding). */
-  private bowlActive = false
-  private bowlGrabDx = 0
-
-  /**
-   * Click-toggle holding state: true from the moment the user clicks the bowl
-   * (without dragging) until they click anywhere again or press ESC. Independent
-   * of the pointer-down gesture — persists across multiple pointer events.
-   */
-  private holdingFood = false
-  /** Cursor-attached pellet element shown while holdingFood is true. */
+  // 포인터 제스처 state. 모든 판정은 gesture.ts의 순수 reducer가 소유하고, 이 클래스는
+  // live rect를 읽어 이벤트를 dispatch하고 반환된 effect를 실행만 한다.
+  private gesture: GestureState<CatInstance> = { kind: 'idle' }
+  // 먹이를 드는 동안 커서에 붙는 pellet element.
   private heldPellet: HTMLImageElement | null = null
-  /** Pellets resting on the floor, oldest first (FIFO for max-5 eviction). */
+  // 바닥에 놓인 pellet, 오래된 것부터(max-5 FIFO 축출용).
   private pellets: Pellet[] = []
-  /** ESC key handler registered once in the constructor, removed in destroy(). */
   private onKeyDown: (e: KeyboardEvent) => void
   private last = performance.now()
 
@@ -118,36 +95,25 @@ export class PetWorld {
     this.onPointerDown = handlers.onPointerDown
     this.onPointerMove = handlers.onPointerMove
     this.onPointerUp = handlers.onPointerUp
-    // pointerdown is on window (not the stage): the stage and the held pellet are
-    // both pointer-events:none, so a click over an empty (high) area never reaches
-    // a stage listener — its target is #root, the stage's PARENT, which doesn't
-    // bubble down. window catches it regardless, so dropping food works anywhere.
+    // pointerdown은 stage가 아니라 window에 건다: stage와 held pellet이 둘 다
+    // pointer-events:none라, 빈(높은) 영역 클릭은 stage 리스너에 닿지 않는다(타깃은
+    // stage의 부모 #root). window는 무조건 받으므로 어디서든 먹이를 떨굴 수 있다.
     window.addEventListener('pointerdown', this.onPointerDown)
     window.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
 
-    // ESC registered once here; the handler no-ops when holdingFood is false.
+    // ESC는 여기서 한 번만 등록; 먹이를 안 들고 있으면 reducer가 no-op.
     this.onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !this.holdingFood) return
-      this.clearFeeding()
-      // We don't know the cursor position from a keydown event. Drop capture
-      // unconditionally; the next pointermove will restore it if the cursor is
-      // over a pet or bowl.
-      if (this.capturing) {
-        this.capturing = false
-        window.petApi.setIgnoreMouseEvents(true)
-      }
+      if (e.key !== 'Escape') return
+      this.dispatch({ type: 'ESC' })
     }
     window.addEventListener('keydown', this.onKeyDown)
 
     this.rafId = requestAnimationFrame((t) => this.frame(t))
   }
 
-  /**
-   * Tear down everything this world created: stop the rAF loop, remove the
-   * pointer listeners, and detach every cat + the trash from the DOM. Safe to
-   * call more than once.
-   */
+  // world가 만든 모든 것 정리: rAF 루프 중지, 포인터 리스너 제거, 모든 고양이 + trash를
+  // DOM에서 분리. 여러 번 호출해도 안전.
   destroy(): void {
     if (!this.alive) return
     this.alive = false
@@ -156,10 +122,10 @@ export class PetWorld {
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
     window.removeEventListener('keydown', this.onKeyDown)
-    this.clearFeeding() // drop any held pellet + release feeding targets
-    this.clearPellets() // remove floor pellets, clear timers + cancel any eats
+    this.clearFeeding() // 들고 있던 pellet 제거 + 먹이 타깃 해제
+    this.clearPellets() // 바닥 pellet 제거, 타이머 정리 + 진행 중 eat 취소
     for (const c of this.cats) {
-      c.engine.dispose() // D8: stop the actor + unsubscribe
+      c.engine.dispose() // actor 중지 + 구독 해제
       c.view.destroy()
     }
     this.cats = []
@@ -171,23 +137,22 @@ export class PetWorld {
     this.onDeleteCb = cb
   }
 
-  /** Called when the bowl is dropped at a new floor x (persist it). */
+  // 밥그릇을 새 floor x에 놓을 때(저장용).
   onBowlMove(cb: (x: number) => void): void {
     this.onBowlMoveCb = cb
   }
 
-  /** Called when the bowl is dropped on the trash (disable it in config). */
+  // 밥그릇을 trash에 버릴 때(config에서 비활성화).
   onBowlRemove(cb: () => void): void {
     this.onBowlRemoveCb = cb
   }
 
-  /**
-   * Reconcile the bowl element to match config: create/remove it and reposition
-   * to `x` (or screen center when null). x is clamped into the visible floor so a
-   * stale/off-screen saved value can't hide the bowl.
-   */
+  // 밥그릇 element를 config에 맞춰 동기화: 생성/제거 + `x`(null이면 화면 중앙)로 이동.
+  // 저장된 값이 낡아 화면 밖이어도 밥그릇이 사라지지 않도록 x를 보이는 floor 안으로 clamp.
   setBowl(enabled: boolean, x: number | null): void {
     if (!enabled) {
+      // 진행 중인 밥그릇 제스처/먹이-들기를 취소(config echo가 제스처 도중 올 수 있음)한 뒤 제거.
+      this.dispatch({ type: 'BOWL_REMOVED' })
       this.removeBowl()
       return
     }
@@ -204,7 +169,7 @@ export class PetWorld {
     this.bowl.style.left = `${this.bowlX}px`
   }
 
-  /** Text shown on the trash when a cat hovers over it. */
+  // 고양이를 trash 위로 올렸을 때 표시할 텍스트.
   setTrashLabel(text: string): void {
     const label = this.trash.querySelector('.trash-label')
     if (label) label.textContent = text
@@ -220,22 +185,21 @@ export class PetWorld {
     for (const c of this.cats) c.engine.setNoWake(on)
   }
 
-  /** Put every cat to sleep immediately. */
+  // 모든 고양이를 즉시 재운다.
   sleepAll(): void {
     for (const c of this.cats) c.engine.sleepNow()
-    // FD4: any cat that was eating is now asleep — free its pellet so another
-    // (awake) cat can be assigned to it instead.
+    // 먹던 고양이가 이제 자므로 그 pellet을 풀어 다른 (깨어 있는) 고양이가 배정되게 한다.
     for (const p of this.pellets) {
       if (p.assignedCat && p.assignedCat.engine.isAsleep()) p.assignedCat = null
     }
   }
 
-  /** Wake every sleeping cat immediately. */
+  // 자는 고양이를 즉시 모두 깨운다.
   wakeAll(): void {
     for (const c of this.cats) c.engine.wakeNow()
   }
 
-  /** Reconcile live cats to match the requested per-color counts. */
+  // 살아있는 고양이를 요청된 색상별 카운트에 맞춘다.
   setCounts(counts: CatCounts): void {
     const colors: CatColor[] = ['ginger', 'grey', 'white']
     for (const color of colors) {
@@ -258,7 +222,7 @@ export class PetWorld {
     return counts
   }
 
-  // --- internals ---
+  // --- 내부 구현 ---
   private getMaxX = (): number => Math.max(0, window.innerWidth - this.def.displaySize)
 
   private spawn(color: CatColor): void {
@@ -274,56 +238,32 @@ export class PetWorld {
   }
 
   private removeCat(cat: CatInstance): void {
-    // FD4: if this cat was assigned to a pellet and mid-eat, cancelEat() first so
-    // the orphaned onEatenCb closure is dropped before we lose the reference.
-    // Then null the assignment so the pellet becomes reassignable.
+    // 이 고양이가 pellet에 배정돼 먹는 중이면 먼저 cancelEat() — 참조를 잃기 전에 고아
+    // onEatenCb 클로저를 떨군다. 그 뒤 배정을 null해 pellet을 재배정 가능하게.
     for (const p of this.pellets) {
       if (p.assignedCat === cat) {
-        cat.engine.cancelEat() // drops onEatenCb; no-op if not eating
+        cat.engine.cancelEat() // onEatenCb 해제; 먹는 중 아니면 no-op
         p.assignedCat = null
       }
     }
-    cat.engine.dispose() // D8: stop the actor + unsubscribe
+    cat.engine.dispose() // actor 중지 + 구독 해제
     cat.view.destroy()
     this.cats = this.cats.filter((c) => c !== cat)
   }
 
+  // 밥그릇 element의 DOM 정리만. 진행 중 제스처/먹이-들기 취소는 BOWL_REMOVED 이벤트로
+  // reducer가 처리한다(외부 제거 트리거 setBowl(false)가 dispatch).
   private removeBowl(): void {
     if (!this.bowl) return
     this.bowl.remove()
     this.bowl = null
-    // If the bowl was being dragged or was the source of an active food-hold
-    // when it was removed (e.g. setBowl(false) fired mid-gesture from a
-    // config-change echo), abort so flags/trash/feeding don't get stuck.
-    // holdingFood is a click-toggle that outlives a single gesture, so we
-    // always cancel it when the bowl disappears — no bowl means no feeding.
-    const wasActive = this.bowlActive || this.holdingFood
-    if (this.bowlActive) {
-      this.bowlActive = false
-      this.down = false
-      this.dragging = false
-      this.trash.classList.remove('visible', 'hot')
-    }
-    if (this.holdingFood) {
-      this.clearFeeding() // sets holdingFood = false, removes pellet, nulls targets
-    }
-    if (wasActive && this.capturing) {
-      this.capturing = false
-      window.petApi.setIgnoreMouseEvents(true)
-    }
   }
 
-  private clampBowlX = (x: number): number =>
-    Math.max(0, Math.min(window.innerWidth - BOWL_SIZE, x))
+  private clampBowlX = (x: number): number => clampX(x, 0, window.innerWidth - BOWL_SIZE)
 
-  /**
-   * Toggle food-hold ON: create the cursor-attached pellet at the click point,
-   * mark holdingFood, and do the first gather pass. Called on a clean bowl click
-   * (pointerup with no drag). The pellet then follows on every pointermove via
-   * updateFeed().
-   */
+  // 먹이-들기 ON: 클릭 지점에 커서 부착 pellet 생성 + 첫 gather 패스. 깔끔한 밥그릇
+  // 클릭(드래그 없는 pointerup)에서 호출. 이후 pellet은 updateFeed()로 매 move마다 따라온다.
   private startFeed(x: number, y: number): void {
-    this.holdingFood = true
     if (!this.heldPellet) {
       const img = document.createElement('img')
       img.className = 'pellet'
@@ -336,7 +276,7 @@ export class PetWorld {
     this.updateFoodTargets(x)
   }
 
-  /** Follow the cursor with the pellet and recompute who's gathering. */
+  // pellet을 커서에 따라가게 하고 누가 모일지 재계산.
   private updateFeed(x: number, y: number): void {
     if (this.heldPellet) this.positionPellet(x, y)
     this.updateFoodTargets(x)
@@ -348,58 +288,40 @@ export class PetWorld {
     this.heldPellet.style.top = `${y - PELLET_SIZE / 2}px`
   }
 
-  /**
-   * Tell each awake cat within FOOD_RADIUS of the cursor x to gather at it;
-   * everyone else (out of range or asleep) gets released. Sleeping cats no-op
-   * inside the engine, so this is membership-by-x only. Recomputed every move.
-   */
+  // 커서 x의 FOOD_RADIUS 내 고양이는 모이게 하고 나머지는 풀어준다. 매 move마다 재계산.
   private updateFoodTargets(cursorX: number): void {
     const center = this.def.displaySize / 2
-    // Every awake/feeding cat within range gathers; the rest are released.
-    const inRange = this.cats.filter(
-      (c) => c.engine.isFreeToEat() && Math.abs(c.engine.x + center - cursorX) <= FOOD_RADIUS
-    )
-    const gathering = new Set(inRange)
-    for (const c of this.cats) {
-      if (!gathering.has(c)) c.engine.setFoodTarget(null)
-    }
-    // Fan the gatherers out around the cursor (sorted by current x so they don't
-    // cross over) instead of stacking on the same spot — otherwise N cats pile
-    // onto one x and look like a single cat.
-    inRange.sort((a, b) => a.engine.x - b.engine.x)
     const spacing = this.def.displaySize * 0.7
-    const n = inRange.length
-    inRange.forEach((c, i) => {
-      const offset = (i - (n - 1) / 2) * spacing
-      c.engine.setFoodTarget(cursorX + offset)
+    // 순수 코어가 멤버십 + 각자의 fan-out target x 결정; 스프라이트 CENTER x 규약.
+    const targets = computeGather(
+      this.cats.map((c) => ({ x: c.engine.x + center, free: c.engine.isFreeToEat() })),
+      cursorX,
+      FOOD_RADIUS,
+      spacing
+    )
+    // 모이지 않는 고양이를 풀어준 뒤, 모이는 각자를 제 자리로 보낸다.
+    const gathering = new Set(targets.map((t) => t.index))
+    this.cats.forEach((c, i) => {
+      if (!gathering.has(i)) c.engine.setFoodTarget(null)
     })
+    for (const t of targets) this.cats[t.index].engine.setFoodTarget(t.targetX)
   }
 
-  /**
-   * End the food-hold toggle: remove the cursor pellet, release every cat, tear
-   * down the ESC listener, and release capture (unless something else still
-   * needs it — the caller is responsible for re-evaluating setCapture after
-   * this if needed).
-   */
+  // 먹이-들기 종료: 커서 pellet 제거 + 모든 고양이 먹이 타깃 해제. (캡처 재평가는 호출부 책임.)
   private clearFeeding(): void {
-    this.holdingFood = false
     if (this.heldPellet) {
       this.heldPellet.remove()
       this.heldPellet = null
     }
-    // ESC listener stays registered (single permanent listener in constructor).
     for (const c of this.cats) c.engine.setFoodTarget(null)
   }
 
-  /**
-   * Drop a floor pellet at cursor x (bottom-anchored). Enforces the max-5 cap by
-   * evicting the oldest (which reverts its eater), arms the 30s expiry timer, and
-   * immediately tries to assign the nearest free cat. (FD5)
-   */
+  // 커서 x에 바닥 pellet을 떨군다(바닥 기준). max-5 캡 적용(가장 오래된 것 축출), 30s 만료
+  // 타이머 장전, 최근접 free 고양이를 즉시 배정 시도.
   private dropPellet(cursorX: number, cursorY: number): void {
-    // Enforce the cap BEFORE adding so we never momentarily exceed it.
+    // 추가 전에 캡을 적용해 한순간도 초과하지 않게.
     while (this.pellets.length >= MAX_PELLETS) {
-      this.removePellet(this.pellets[0]) // oldest first (FIFO)
+      this.removePellet(this.pellets[0]) // 오래된 것부터(FIFO)
     }
     const x = Math.max(0, Math.min(window.innerWidth, cursorX))
     const el = document.createElement('img')
@@ -407,14 +329,14 @@ export class PetWorld {
     el.src = pelletPng
     el.draggable = false
     el.style.left = `${x - PELLET_SIZE / 2}px`
-    // Drop animation: start at the cursor height, then fall to the floor (슝).
+    // 떨어지는 애니: 커서 높이에서 시작해 바닥으로 낙하(슝).
     const restTop = window.innerHeight - PELLET_SIZE
     const dy = Math.min(0, cursorY - restTop)
     el.style.transition = 'none'
     el.style.transform = `translateY(${dy}px)`
     this.stage.appendChild(el)
     requestAnimationFrame(() => {
-      el.style.transition = '' // back to the stylesheet (opacity + transform)
+      el.style.transition = '' // 스타일시트로 복귀(opacity + transform)
       el.style.transform = 'translateY(0)'
     })
     const pellet: Pellet = {
@@ -423,97 +345,95 @@ export class PetWorld {
       assignedCat: null,
       expireTimer: setTimeout(() => this.expirePellet(pellet), PELLET_TTL_MS),
       expiring: false,
-      fadeTimer: null  // set by expirePellet() once the 30 s TTL fires
+      fadeTimer: null // 30s TTL이 터지면 expirePellet()이 설정
     }
     this.pellets.push(pellet)
     this.assignPellets()
   }
 
-  /**
-   * For every unassigned pellet, try to send the nearest free awake cat to eat
-   * it. A cat already assigned to another pellet (or eating) is skipped, so no
-   * double-assignment (FD4). Called when a pellet drops and every frame so a
-   * pellet that couldn't be assigned yet gets picked up once a cat frees.
-   */
+  // 미배정 pellet마다 최근접 free 고양이를 보내 먹게 한다(이중배정 없음). pellet이
+  // 떨어질 때와 매 프레임 호출 → 한때 배정 못 한 pellet도 고양이가 free되면 집어간다.
   private assignPellets(): void {
-    // Build the taken-cats set once and update it incrementally as we assign,
-    // so O(P) instead of O(P²) and each newly-assigned cat is excluded for
-    // subsequent pellets in the same pass.
-    const taken = new Set<CatInstance>(
-      this.pellets.map((p) => p.assignedCat).filter((c): c is CatInstance => c !== null)
+    const center = this.def.displaySize / 2
+    // 순수 코어가 incremental taken-set으로 최근접-free 패스(이중배정 없음, 결정적
+    // 타이브레이크)를 plain 데이터 위에서 수행. 스프라이트 CENTER x 규약.
+    const assignments = assignNearestFree(
+      this.cats.map((c) => ({ x: c.engine.x + center, free: c.engine.isFreeToEat() })),
+      this.pellets.map((p) => ({
+        x: p.x,
+        assignedCatIndex: p.assignedCat ? this.cats.indexOf(p.assignedCat) : null,
+        expiring: p.expiring
+      }))
     )
-    for (const pellet of this.pellets) {
-      if (pellet.assignedCat || pellet.expiring) continue
-      let best: CatInstance | null = null
-      let bestDist = Infinity
-      for (const c of this.cats) {
-        if (!c.engine.isFreeToEat() || taken.has(c)) continue
-        const catX = c.engine.x + this.def.displaySize / 2
-        const dist = Math.abs(catX - pellet.x)
-        if (dist < bestDist) {
-          bestDist = dist
-          best = c
-        }
-      }
-      if (best) {
-        pellet.assignedCat = best
-        taken.add(best) // exclude from subsequent pellets in this pass
-        // On eat completion: remove the pellet (also frees the cat ref). The
-        // engine resets itself to autonomous before firing this.
-        best.engine.goEat(pellet.x, () => this.removePellet(pellet))
-      }
-      // No free cat → leave unassigned; a later assignPellets() tick retries.
+    for (const { pelletIndex, catIndex } of assignments) {
+      const pellet = this.pellets[pelletIndex]
+      const cat = this.cats[catIndex]
+      pellet.assignedCat = cat
+      // 먹기 완료 시: pellet 제거(고양이 참조도 해제). engine은 이 콜백 전에 스스로
+      // autonomous로 리셋된다.
+      cat.engine.goEat(pellet.x, () => this.removePellet(pellet))
     }
   }
 
-  /**
-   * Remove a floor pellet: clear its expiry timer, tell its assigned cat to stop
-   * eating (revert cleanly), drop it from the array, and detach the element. Safe
-   * to call once per pellet. (FD4/FD5)
-   */
+  // 바닥 pellet 제거: 만료 타이머 정리, 배정된 고양이의 eat 취소(깔끔히 복귀), 배열에서
+  // 빼고 element 분리. pellet당 한 번 호출해도 안전.
   private removePellet(pellet: Pellet): void {
     const idx = this.pellets.indexOf(pellet)
-    if (idx === -1) return // already removed
+    if (idx === -1) return // 이미 제거됨
     this.pellets.splice(idx, 1)
     clearTimeout(pellet.expireTimer)
-    // Cancel the fade-removal timer if destroy() runs during the 400 ms window
-    // so the callback never fires on a dead world. (fix #3)
+    // 400ms fade 창 도중 teardown이 끼어들면 죽은 world에서 콜백이 터지지 않도록 취소.
     if (pellet.fadeTimer !== null) clearTimeout(pellet.fadeTimer)
-    // If a cat was mid-eat on this pellet, revert it (the eat completion callback
-    // won't fire because we removed the pellet first). When the pellet was
-    // removed BY that callback the cat has already reset itself, so cancelEat is
-    // a no-op (mode is no longer 'eating').
+    // 이 pellet을 먹던 고양이가 있으면 복귀시킨다(pellet을 먼저 지워 eat 완료 콜백은 안 터짐).
+    // 그 콜백이 pellet을 지운 경우엔 고양이가 이미 리셋돼 cancelEat은 no-op이다.
     if (pellet.assignedCat) pellet.assignedCat.engine.cancelEat()
     pellet.el.remove()
   }
 
-  /** 30s TTL elapsed: fade the pellet out (FD11), then remove it. */
+  // 30s TTL 경과: pellet을 fade-out 후 제거.
   private expirePellet(pellet: Pellet): void {
     if (this.pellets.indexOf(pellet) === -1 || pellet.expiring) return
-    pellet.expiring = true // block reassignment while it fades out
-    // Visual feedback: fade, then remove after the CSS transition (400 ms).
+    pellet.expiring = true // fade 동안 재배정 차단
     pellet.el.classList.add('pellet-floor--expiring')
-    // Free its eater immediately so the cat doesn't keep eating a fading pellet.
+    // 먹던 고양이를 즉시 풀어 사라지는 pellet을 계속 먹지 않게 한다.
     if (pellet.assignedCat) {
       pellet.assignedCat.engine.cancelEat()
       pellet.assignedCat = null
     }
-    // Store the id so removePellet / destroy() can cancel it if the world tears
-    // down during the fade window — prevents callback on a dead world. (fix #3)
+    // fade 창 도중 teardown 시 취소할 수 있게 id 보관 — 죽은 world 콜백 방지.
     pellet.fadeTimer = setTimeout(() => this.removePellet(pellet), 400)
   }
 
-  /** Remove every floor pellet + clear timers + revert eaters (destroy/teardown). */
+  // 모든 바닥 pellet 제거 + 타이머 정리 + 먹던 고양이 복귀(teardown용).
   private clearPellets(): void {
-    // Copy first: removePellet mutates this.pellets.
+    // 먼저 복사: removePellet이 this.pellets를 변형한다.
     for (const pellet of [...this.pellets]) this.removePellet(pellet)
   }
 
-  /** Free any pellet assigned to this cat (used before drag overrides its eat). */
+  // 이 고양이에 배정된 pellet을 푼다(드래그가 eat를 덮어쓰기 전에 사용).
   private unassignCat(cat: CatInstance): void {
     for (const p of this.pellets) {
       if (p.assignedCat === cat) p.assignedCat = null
     }
+  }
+
+  // ── 포인터 히트테스트 (live DOM rect를 호출 시점에 읽음, 캐시 금지) ──
+  // 포인터 아래 topmost 고양이(마지막 그린 것 우선) — 고양이 우선순위 보존.
+  private catUnder(cx: number, cy: number): CatInstance | null {
+    return pickTopmost(
+      this.cats.map((c) => ({ rect: c.view.getHitRect(), ref: c })),
+      { x: cx, y: cy }
+    )
+  }
+  private overTrash(cx: number, cy: number): boolean {
+    return pointInRect({ x: cx, y: cy }, this.trash.getBoundingClientRect())
+  }
+  private bowlUnder(cx: number, cy: number): boolean {
+    return this.bowl !== null && pointInRect({ x: cx, y: cy }, this.bowl.getBoundingClientRect())
+  }
+  // 커서가 interactive 객체(고양이 또는 밥그릇) 위에 있는가.
+  private overInteractive(cx: number, cy: number): boolean {
+    return this.catUnder(cx, cy) !== null || this.bowlUnder(cx, cy)
   }
 
   private bindPointer(): {
@@ -521,195 +441,120 @@ export class PetWorld {
     onPointerMove: (e: PointerEvent) => void
     onPointerUp: (e: PointerEvent) => void
   } {
-    const setCapture = (on: boolean): void => {
-      if (on === this.capturing) return
-      this.capturing = on
-      window.petApi.setIgnoreMouseEvents(!on)
-    }
-    const catUnder = (cx: number, cy: number): CatInstance | null => {
-      // topmost (last drawn) first
-      for (let i = this.cats.length - 1; i >= 0; i--) {
-        const r = this.cats[i].view.getHitRect()
-        if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) return this.cats[i]
-      }
-      return null
-    }
-    const overTrash = (cx: number, cy: number): boolean => {
-      const r = this.trash.getBoundingClientRect()
-      return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
-    }
-    const bowlUnder = (cx: number, cy: number): boolean => {
-      if (!this.bowl) return false
-      const r = this.bowl.getBoundingClientRect()
-      return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom
-    }
-    /** Whether the cursor is over any interactive object (cat or bowl). */
-    const overInteractive = (cx: number, cy: number): boolean =>
-      catUnder(cx, cy) !== null || bowlUnder(cx, cy)
-
+    // 각 핸들러는 live rect를 읽어 히트 결과를 담은 이벤트를 만들고 reducer로 dispatch.
+    // 모든 제스처 판정은 reducer가 소유; dispatch()가 반환 effect를 실행한다.
     const onPointerDown = (e: PointerEvent): void => {
-      // --- While holding food, a click drops a pellet (or ends the hold if it
-      // lands on the bowl). We record the down position + whether it started on
-      // the bowl here; onPointerUp decides click vs drag and acts. ---
-      if (this.holdingFood) {
-        this.down = true
-        this.dragging = false
-        this.downX = e.clientX
-        this.active = null
-        // Reuse bowlActive to remember "this click began on the bowl" so the up
-        // handler can end the hold instead of dropping a pellet there.
-        this.bowlActive = this.bowl !== null && bowlUnder(e.clientX, e.clientY)
-        // Don't let bowl or cat logic below run — the gesture belongs to feeding.
-        return
-      }
-
-      // Cats keep priority over the bowl (preserves existing cat hit behavior).
-      const c = catUnder(e.clientX, e.clientY)
-      if (c) {
-        this.down = true
-        this.dragging = false
-        this.downX = e.clientX
-        this.active = c
-        return
-      }
-
-      if (this.bowl && bowlUnder(e.clientX, e.clientY)) {
-        this.down = true
-        this.dragging = false
-        this.downX = e.clientX
-        // Bowl gesture starts as potentially a drag (reposition) OR a click
-        // (toggle food-hold). We don't know yet — wait for pointermove/up to
-        // decide. bowlActive is set on first move past the threshold; if the
-        // pointer goes up without crossing it, it's a click → start holding.
-        this.bowlActive = true
-        this.bowlGrabDx = e.clientX - this.bowlX
-      }
+      this.dispatch({
+        type: 'POINTER_DOWN',
+        x: e.clientX,
+        y: e.clientY,
+        bowlX: this.bowlX,
+        hit: { cat: this.catUnder(e.clientX, e.clientY), onBowl: this.bowlUnder(e.clientX, e.clientY) }
+      })
     }
-
     const onPointerMove = (e: PointerEvent): void => {
-      // --- Holding food: pellet tracks cursor, cats gather. ---
-      if (this.holdingFood) {
-        this.updateFeed(e.clientX, e.clientY)
-        // Keep capture so cursor moves register even over transparent areas.
-        setCapture(true)
-        return
-      }
-
-      if (this.down && this.active) {
-        if (!this.dragging && Math.abs(e.clientX - this.downX) > 4) {
-          this.dragging = true
-          // FD4: grabbing a cat that was going to / eating a pellet frees that
-          // pellet so it can be reassigned (startDrag clears the cat's eat state).
-          this.unassignCat(this.active)
-          this.active.engine.startDrag()
-          this.trash.classList.add('visible')
-        }
-        if (this.dragging) {
-          this.active.engine.dragTo(e.clientX - this.def.displaySize / 2)
-          setCapture(true)
-          this.trash.classList.toggle('hot', overTrash(e.clientX, e.clientY))
-        }
-        return
-      }
-
-      if (this.down && this.bowlActive && this.bowl) {
-        if (!this.dragging && Math.abs(e.clientX - this.downX) > 4) {
-          // Crossed the drag threshold: this is a reposition gesture, not a
-          // food-pick click. Lock in bowl-drag mode.
-          this.dragging = true
-          this.trash.classList.add('visible')
-        }
-        if (this.dragging) {
-          this.bowlX = this.clampBowlX(e.clientX - this.bowlGrabDx)
-          this.bowl.style.left = `${this.bowlX}px`
-          setCapture(true)
-          this.trash.classList.toggle('hot', overTrash(e.clientX, e.clientY))
-        }
-        return
-      }
-
-      setCapture(overInteractive(e.clientX, e.clientY))
+      this.dispatch({
+        type: 'POINTER_MOVE',
+        x: e.clientX,
+        y: e.clientY,
+        overTrash: this.overTrash(e.clientX, e.clientY),
+        overInteractive: this.overInteractive(e.clientX, e.clientY)
+      })
     }
-
     const onPointerUp = (e: PointerEvent): void => {
-      // --- While holding food: a click drops a pellet; clicking the bowl ends
-      // the hold. ---
-      // Holding end-condition (chosen): each clean click while holding drops one
-      // floor pellet and KEEPS holding (PRD "무한 공급·여러개"), so the user can
-      // rapidly drop several. The hold ends only via (a) clicking the bowl again
-      // or (b) ESC. onPointerMove returns early while holding, so this.dragging is
-      // always false here — there is no drag-to-reposition gesture mid-hold.
-      if (this.holdingFood && this.down) {
-        const startedOnBowl = this.bowlActive
-        // If the click ended on the bowl too, treat it as "put the food back" →
-        // end the hold. Otherwise drop a pellet at the cursor x and keep holding.
-        if (startedOnBowl && this.bowl && bowlUnder(e.clientX, e.clientY)) {
-          this.clearFeeding()
-        } else {
-          this.dropPellet(e.clientX, e.clientY)
-          // Stay in holding mode: refresh the gather pass for the cats that are
-          // still begging the (unchanged) cursor position.
-          this.updateFoodTargets(e.clientX)
-        }
-        this.down = false
-        this.dragging = false
-        this.bowlActive = false
-        // Keep capture while still holding so subsequent clicks/moves register.
-        setCapture(this.holdingFood ? true : overInteractive(e.clientX, e.clientY))
-        return
-      }
-
-      if (this.down && this.active) {
-        if (this.dragging) {
-          if (overTrash(e.clientX, e.clientY)) {
-            this.removeCat(this.active)
-            this.onDeleteCb?.()
-          } else {
-            this.active.engine.endDrag()
-          }
-          this.trash.classList.remove('visible', 'hot')
-        } else {
-          this.active.engine.click()
-        }
-      } else if (this.down && this.bowlActive) {
-        // Handle even if this.bowl is null (removeBowl() may have nulled it
-        // mid-drag via setBowl(false)) — we still need to clean up trash/flags.
-        if (this.dragging) {
-          // Drag ended: reposition or trash the bowl (Phase A behavior intact).
-          if (this.bowl && overTrash(e.clientX, e.clientY)) {
-            this.removeBowl()
-            this.onBowlRemoveCb?.()
-          } else if (this.bowl) {
-            this.onBowlMoveCb?.(this.bowlX)
-          }
-          this.trash.classList.remove('visible', 'hot')
-        } else {
-          // Clean click on the bowl (no drag): toggle food-hold ON.
-          // Cats start gathering; ESC (permanent listener) or next click cancels.
-          this.startFeed(e.clientX, e.clientY)
-          setCapture(true)
-        }
-      }
-
-      this.down = false
-      this.dragging = false
-      this.active = null
-      this.bowlActive = false
-      if (!this.holdingFood) {
-        setCapture(overInteractive(e.clientX, e.clientY))
-      }
+      this.dispatch({
+        type: 'POINTER_UP',
+        x: e.clientX,
+        y: e.clientY,
+        onBowl: this.bowlUnder(e.clientX, e.clientY),
+        overTrash: this.overTrash(e.clientX, e.clientY),
+        overInteractive: this.overInteractive(e.clientX, e.clientY)
+      })
     }
-
     return { onPointerDown, onPointerMove, onPointerUp }
+  }
+
+  // 이벤트를 순수 reducer에 넣어 다음 state를 저장하고, 반환 effect를 순서대로 SYNCHRONOUS
+  // 실행 — 클릭통과 캡처가 같은 이벤트 턴 안에서 토글되도록(필수).
+  private dispatch(event: Parameters<typeof reduce<CatInstance>>[1]): void {
+    const { state, effects } = reduce(this.gesture, event)
+    this.gesture = state
+    for (const effect of effects) this.runEffect(effect)
+  }
+
+  // 제스처 effect 하나를 DOM/engine/IO에 실행(불순).
+  private runEffect(effect: Effect<CatInstance>): void {
+    switch (effect.type) {
+      case 'SET_CAPTURE':
+        // Idempotent: 값이 실제로 바뀔 때만 클릭통과를 토글.
+        if (effect.on !== this.capturing) {
+          this.capturing = effect.on
+          window.petApi.setIgnoreMouseEvents(!effect.on)
+        }
+        break
+      case 'START_DRAG':
+        // pellet으로 가던/먹던 고양이를 잡으면 그 pellet을 풀어 재배정 가능하게 한다
+        // (startDrag가 고양이의 eat 상태를 정리).
+        this.unassignCat(effect.cat)
+        effect.cat.engine.startDrag()
+        this.trash.classList.add('visible')
+        break
+      case 'DRAG_TO':
+        effect.cat.engine.dragTo(effect.x - this.def.displaySize / 2)
+        break
+      case 'END_DRAG':
+        effect.cat.engine.endDrag()
+        break
+      case 'CLICK_CAT':
+        effect.cat.engine.click()
+        break
+      case 'REMOVE_CAT':
+        this.removeCat(effect.cat)
+        this.onDeleteCb?.()
+        break
+      case 'START_FEED':
+        this.startFeed(effect.x, effect.y)
+        break
+      case 'UPDATE_FEED':
+        this.updateFeed(effect.x, effect.y)
+        break
+      case 'UPDATE_FOOD_TARGETS':
+        this.updateFoodTargets(effect.x)
+        break
+      case 'CLEAR_FEEDING':
+        this.clearFeeding()
+        break
+      case 'DROP_PELLET':
+        this.dropPellet(effect.x, effect.y)
+        break
+      case 'SET_BOWL_X':
+        if (this.bowl) {
+          this.bowlX = this.clampBowlX(effect.x)
+          this.bowl.style.left = `${this.bowlX}px`
+        }
+        break
+      case 'PERSIST_BOWL_X':
+        if (this.bowl) this.onBowlMoveCb?.(this.bowlX)
+        break
+      case 'REMOVE_BOWL_CFG':
+        if (this.bowl) {
+          this.removeBowl()
+          this.onBowlRemoveCb?.()
+        }
+        break
+      case 'TRASH':
+        if (effect.visible !== undefined) this.trash.classList.toggle('visible', effect.visible)
+        if (effect.hot !== undefined) this.trash.classList.toggle('hot', effect.hot)
+        break
+    }
   }
 
   private frame(now: number): void {
     if (!this.alive) return
     const dt = Math.min(0.05, (now - this.last) / 1000)
     this.last = now
-    // Retry assignment for any pellet still waiting for a free cat (a cat may
-    // have just finished eating, woken, or been put down). Cheap no-op when no
-    // pellet is unassigned. (FD4 re-attempt-each-tick)
+    // free 고양이를 기다리는 pellet이 있으면 배정 재시도(방금 다 먹었거나 깼거나 내려놨을
+    // 수 있음). 미배정 pellet이 없으면 값싼 no-op.
     if (this.pellets.some((p) => !p.assignedCat && !p.expiring)) this.assignPellets()
     for (const c of this.cats) {
       c.engine.tick(dt)
