@@ -62,6 +62,9 @@ export type CatEvent =
   | { type: 'SET_NO_WAKE'; on: boolean }
   | { type: 'CLEAR_PENDING_CALLBACKS' }
 
+// 클릭 반응(meow/hiss) 1회성 pose를 유지하는 시간(초). 그 뒤 autonomous로 복귀.
+const CLICK_REACT_SEC = 1.0
+
 export const catMachine = setup({
   types: {
     context: {} as CatContext,
@@ -286,7 +289,7 @@ export const catMachine = setup({
             moving: false,
             queue: [],
             animKey: 'meow_sit',
-            remaining: 1.0,
+            remaining: CLICK_REACT_SEC,
             facing: context.facing
           }))
         },
@@ -312,7 +315,7 @@ export const catMachine = setup({
             moving: false,
             queue: [],
             animKey: `hiss_${context.facing}`,
-            remaining: 1.0
+            remaining: CLICK_REACT_SEC
           }))
         },
         WAKE_NOW: { target: 'awake', actions: 'enterAwakeIdle' },

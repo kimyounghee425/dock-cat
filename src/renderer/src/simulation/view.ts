@@ -1,5 +1,9 @@
 import type { Anim } from './types'
 
+// 픽셀을 "불투명"으로 칠 최소 알파(0-255). 안티에일리어싱 가장자리의 거의 투명한
+// 픽셀을 히트박스/바닥선에서 제외하기 위한 컷오프.
+const ALPHA_OPAQUE_THRESHOLD = 10
+
 export interface HitRect {
   left: number
   top: number
@@ -112,7 +116,7 @@ export class PetView {
       maxy = -1
     for (let y = 0; y < F; y++) {
       for (let x = 0; x < F; x++) {
-        if (data[(y * F + x) * 4 + 3] > 10) {
+        if (data[(y * F + x) * 4 + 3] > ALPHA_OPAQUE_THRESHOLD) {
           if (x < minx) minx = x
           if (x > maxx) maxx = x
           if (y < miny) miny = y
@@ -137,7 +141,7 @@ export class PetView {
       for (let y = F - 1; y > lowest; y--) {
         let opaque = false
         for (let x = 0; x < F; x++) {
-          if (data[(y * F + x) * 4 + 3] > 10) {
+          if (data[(y * F + x) * 4 + 3] > ALPHA_OPAQUE_THRESHOLD) {
             opaque = true
             break
           }
