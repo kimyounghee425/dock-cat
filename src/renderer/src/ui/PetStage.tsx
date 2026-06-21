@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { PetWorld } from './pet/world'
-import { cat, CAT_SHEETS } from './pets/cat'
-import { STRINGS } from './i18n'
+import { PetWorld } from '../simulation/world'
+import { cat, CAT_SHEETS } from '../simulation/cat'
+import { STRINGS } from '../i18n'
 
 const toSec = (min: number | null): number => (min === null ? Infinity : min * 60)
 

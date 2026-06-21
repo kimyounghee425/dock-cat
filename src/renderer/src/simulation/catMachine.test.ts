@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createActor } from 'xstate'
 import { catMachine, type CatContext } from './catMachine'
-import { cat } from '../pets/cat'
+import { cat } from './cat'
 import {
   type Frame,
   type Step,

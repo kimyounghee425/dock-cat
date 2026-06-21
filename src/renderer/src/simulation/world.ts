@@ -4,8 +4,8 @@ import { PetView } from './view'
 import { clampX, pickTopmost, pointInRect } from './geometry'
 import { assignNearestFree, computeGather } from './feeding-logic'
 import { reduce, type Effect, type GestureState } from './gesture'
-import bowlPng from '../assets/bowl.png'
-import pelletPng from '../assets/pellet.png'
+import bowlPng from './assets/bowl.png'
+import pelletPng from './assets/pellet.png'
 
 interface CatInstance {
   color: CatColor

@@ -1,4 +1,4 @@
-import type { CatColor, Lang } from './pet/types'
+import type { CatColor, Lang } from './simulation/types'
 
 interface Strings {
   catsCount: (n: number) => string

@@ -1,8 +1,8 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import type { CatColor, PetConfig } from './pet/types'
-import { CAT_COLORS, DEFAULT_CONFIG, MAX_PER_COLOR, SLEEP_OPTIONS } from '../../shared/config'
-import { CAT_SHEETS } from './pets/cat'
-import { LANGS, STRINGS } from './i18n'
+import type { CatColor, PetConfig } from '../simulation/types'
+import { CAT_COLORS, DEFAULT_CONFIG, MAX_PER_COLOR, SLEEP_OPTIONS } from '../../../shared/config'
+import { CAT_SHEETS } from '../simulation/cat'
+import { LANGS, STRINGS } from '../i18n'
 
 const LANG_SHORT: Record<string, string> = { ko: '한', en: 'EN' }
 

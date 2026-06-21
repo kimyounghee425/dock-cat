@@ -1,7 +1,7 @@
-import type { Anim, CatColor, PetDefinition } from '../pet/types'
-import ginger from '../assets/cat-ginger.png'
-import grey from '../assets/cat-grey.png'
-import white from '../assets/cat-white.png'
+import type { Anim, CatColor, PetDefinition } from './types'
+import ginger from './assets/cat-ginger.png'
+import grey from './assets/cat-grey.png'
+import white from './assets/cat-white.png'
 
 export const CAT_SHEETS: Record<CatColor, string> = { ginger, grey, white }
 
