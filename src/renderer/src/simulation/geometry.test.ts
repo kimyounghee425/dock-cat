@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { clampX, exceedsDragThreshold, pickTopmost, pointInRect, type Rect } from './geometry'
+import {
+  clampX,
+  exceedsDragThreshold,
+  pickTopmost,
+  pointInRect,
+  spriteDestY,
+  spriteHitRect,
+  type Rect,
+} from './geometry'
 
 const rect = (left: number, top: number, right: number, bottom: number): Rect => ({
   left,
@@ -122,5 +130,60 @@ describe('exceedsDragThreshold', () => {
   it('honours a custom threshold', () => {
     expect(exceedsDragThreshold(0, 10, 10)).toBe(false) // 정확히 10
     expect(exceedsDragThreshold(0, 11, 10)).toBe(true)
+  })
+})
+
+describe('spriteDestY', () => {
+  // lowestRow 픽셀의 바닥면 = destY + (lowestRow+1)*scale = screenHeight - catY
+  it('바닥(catY=0)에서 lowestRow 바닥면이 screenHeight와 일치한다', () => {
+    const destY = spriteDestY(0, 28, 2, 800)
+    expect(destY).toBe(742)
+    expect(destY + (28 + 1) * 2).toBe(800)
+  })
+
+  it('공중(catY>0)에서 lowestRow 바닥면이 screenHeight - catY와 일치한다', () => {
+    const destY = spriteDestY(50, 28, 2, 800)
+    expect(destY).toBe(692)
+    expect(destY + (28 + 1) * 2).toBe(750) // 800 - 50
+  })
+
+  it('lowestRow=0, scale=1 — 1픽셀짜리 스프라이트는 screenHeight-catY-1에 그린다', () => {
+    expect(spriteDestY(0, 0, 1, 100)).toBe(99)
+  })
+
+  it('lowestRow가 frameSize-1이고 scale=1이면 destY=0 (스프라이트가 캔버스 꼭대기부터 시작)', () => {
+    expect(spriteDestY(0, 31, 1, 32)).toBe(0)
+  })
+})
+
+describe('spriteHitRect', () => {
+  const box = { x: 2, y: 4, w: 28, h: 24 }
+
+  it('contentBox를 scale만큼 확대해 화면 좌표로 변환한다', () => {
+    const hr = spriteHitRect(100, 0, box, 28, 2, 800)
+    expect(hr.left).toBe(104)   // 100 + 2*2
+    expect(hr.right).toBe(160)  // 100 + (2+28)*2
+    expect(hr.top).toBe(750)    // destY(742) + 4*2
+    expect(hr.bottom).toBe(798) // destY(742) + (4+24)*2
+  })
+
+  it('히트박스 너비/높이가 contentBox * scale과 같다', () => {
+    const hr = spriteHitRect(0, 0, box, 28, 2, 800)
+    expect(hr.right - hr.left).toBe(box.w * 2)
+    expect(hr.bottom - hr.top).toBe(box.h * 2)
+  })
+
+  it('catY가 오를수록 히트박스 전체가 위로 이동한다', () => {
+    const floor = spriteHitRect(0, 0, box, 28, 2, 800)
+    const air = spriteHitRect(0, 50, box, 28, 2, 800)
+    expect(air.top).toBe(floor.top - 50)
+    expect(air.bottom).toBe(floor.bottom - 50)
+  })
+
+  it('catX가 오를수록 히트박스 전체가 오른쪽으로 이동한다', () => {
+    const left = spriteHitRect(0, 0, box, 28, 2, 800)
+    const right = spriteHitRect(100, 0, box, 28, 2, 800)
+    expect(right.left - left.left).toBe(100)
+    expect(right.right - left.right).toBe(100)
   })
 })

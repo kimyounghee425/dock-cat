@@ -81,6 +81,10 @@ export class PetWorld {
   private last = performance.now()
   readonly perf: PerfStats = { fps: 0, frameMs: 0, longFrames: 0, tickMs: 0, renderMs: 0, heapMB: 0, canvasCount: 0, catCount: 0 }
 
+  private sharedCanvas: HTMLCanvasElement
+  private sharedCtx: CanvasRenderingContext2D
+  private onResize: () => void
+
   private rafId = 0
   private alive = true
   private onPointerDown: (e: PointerEvent) => void
@@ -97,6 +101,20 @@ export class PetWorld {
     this.def = def
     this.sheets = sheets
     this.sleepAfterSec = sleepAfterSec
+
+    this.sharedCanvas = document.createElement('canvas')
+    this.sharedCanvas.width = window.innerWidth
+    this.sharedCanvas.height = window.innerHeight
+    this.sharedCanvas.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;'
+    stage.appendChild(this.sharedCanvas)
+    this.sharedCtx = this.sharedCanvas.getContext('2d')!
+    this.sharedCtx.imageSmoothingEnabled = false
+
+    this.onResize = (): void => {
+      this.sharedCanvas.width = window.innerWidth
+      this.sharedCanvas.height = window.innerHeight
+    }
+    window.addEventListener('resize', this.onResize)
 
     this.trash = document.createElement('div')
     this.trash.className = 'trash'
@@ -134,6 +152,7 @@ export class PetWorld {
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
     window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('resize', this.onResize)
     this.clearFeeding() // 들고 있던 pellet 제거 + 먹이 타깃 해제
     this.clearPellets() // 바닥 pellet 제거, 타이머 정리 + 진행 중 eat 취소
     for (const c of this.cats) {
@@ -143,6 +162,7 @@ export class PetWorld {
     this.cats = []
     this.removeBowl()
     this.trash.remove()
+    this.sharedCanvas.remove()
   }
 
   onDelete(cb: () => void): void {
@@ -245,7 +265,7 @@ export class PetWorld {
       sleepAfter: this.sleepAfterSec
     })
     engine.setNoWake(this.noWake)
-    const view = new PetView(this.stage, this.def.frameSize, this.def.displaySize, this.sheets[color])
+    const view = new PetView(this.sharedCtx, this.def.frameSize, this.def.displaySize, this.sheets[color])
     this.cats.push({ color, engine, view, lastKey: '' })
   }
 
@@ -587,14 +607,15 @@ export class PetWorld {
     this.perf.tickMs = performance.now() - t0
 
     const t1 = performance.now()
+    this.sharedCtx.clearRect(0, 0, this.sharedCanvas.width, this.sharedCanvas.height)
     for (const c of this.cats) {
-      c.view.tick(dt)
       c.view.setPosition(c.engine.x, c.engine.y)
+      c.view.tick(dt)
     }
     this.perf.renderMs = performance.now() - t1
 
     this.perf.catCount = this.cats.length
-    this.perf.canvasCount = this.cats.length
+    this.perf.canvasCount = 1
     this.perf.heapMB = ((performance as any).memory?.usedJSHeapSize ?? 0) / 1_048_576
 
     this.rafId = requestAnimationFrame((t) => this.frame(t))

@@ -46,3 +46,42 @@ export function clampX(x: number, min: number, max: number): number {
 export function exceedsDragThreshold(downX: number, x: number, threshold = 4): boolean {
   return Math.abs(x - downX) > threshold
 }
+
+// 스프라이트 픽셀 공간의 불투명 bounding box.
+export interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// 단일 canvas 렌더링에서 스프라이트를 그릴 CSS y 좌표(top).
+// catY: 엔진 y (0 = 바닥, 위로 증가), lowestRow: 스프라이트에서 가장 아래 불투명 row(0-indexed).
+// lowestRow 픽셀의 바닥면이 화면 바닥(screenHeight - catY)에 닿도록 destY를 역산한다.
+export function spriteDestY(
+  catY: number,
+  lowestRow: number,
+  scale: number,
+  screenHeight: number
+): number {
+  return screenHeight - catY - (lowestRow + 1) * scale
+}
+
+// 단일 canvas 좌표계에서의 히트 Rect.
+// contentBox: 스프라이트 픽셀 공간의 불투명 bounding box.
+export function spriteHitRect(
+  catX: number,
+  catY: number,
+  contentBox: Box,
+  lowestRow: number,
+  scale: number,
+  screenHeight: number
+): Rect {
+  const destY = spriteDestY(catY, lowestRow, scale, screenHeight)
+  return {
+    left: catX + contentBox.x * scale,
+    top: destY + contentBox.y * scale,
+    right: catX + (contentBox.x + contentBox.w) * scale,
+    bottom: destY + (contentBox.y + contentBox.h) * scale,
+  }
+}
