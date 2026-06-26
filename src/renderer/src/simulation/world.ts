@@ -40,6 +40,17 @@ const MAX_PELLETS = 5
 // 안 먹힌 바닥 pellet이 떨어진 뒤 자동 소멸하기까지의 ms.
 const PELLET_TTL_MS = 30_000
 
+export type PerfStats = {
+  fps: number
+  frameMs: number
+  longFrames: number
+  tickMs: number
+  renderMs: number
+  heapMB: number
+  canvasCount: number
+  catCount: number
+}
+
 // 화면의 모든 고양이를 관리: 색상별 카운트 spawn/제거, 단일 rAF 루프, 중앙 집중식
 // 클릭통과 + 드래그 처리(고양이끼리 마우스 다툼 방지), 삭제용 중앙 trash.
 export class PetWorld {
@@ -68,6 +79,7 @@ export class PetWorld {
   private pellets: Pellet[] = []
   private onKeyDown: (e: KeyboardEvent) => void
   private last = performance.now()
+  readonly perf: PerfStats = { fps: 0, frameMs: 0, longFrames: 0, tickMs: 0, renderMs: 0, heapMB: 0, canvasCount: 0, catCount: 0 }
 
   private rafId = 0
   private alive = true
@@ -551,11 +563,19 @@ export class PetWorld {
 
   private frame(now: number): void {
     if (!this.alive) return
-    const dt = Math.min(0.05, (now - this.last) / 1000)
+    const elapsed = now - this.last
     this.last = now
+    const dt = Math.min(0.05, elapsed / 1000)
+
+    this.perf.fps = this.perf.fps * 0.9 + (1000 / elapsed) * 0.1
+    this.perf.frameMs = elapsed
+    if (elapsed > 16) this.perf.longFrames++
+
     // free 고양이를 기다리는 pellet이 있으면 배정 재시도(방금 다 먹었거나 깼거나 내려놨을
     // 수 있음). 미배정 pellet이 없으면 값싼 no-op.
     if (this.pellets.some((p) => !p.assignedCat && !p.expiring)) this.assignPellets()
+
+    const t0 = performance.now()
     for (const c of this.cats) {
       c.engine.tick(dt)
       if (c.engine.animKey !== c.lastKey) {
@@ -563,9 +583,20 @@ export class PetWorld {
         if (anim) c.view.setAnimation(anim)
         c.lastKey = c.engine.animKey
       }
+    }
+    this.perf.tickMs = performance.now() - t0
+
+    const t1 = performance.now()
+    for (const c of this.cats) {
       c.view.tick(dt)
       c.view.setPosition(c.engine.x, c.engine.y)
     }
+    this.perf.renderMs = performance.now() - t1
+
+    this.perf.catCount = this.cats.length
+    this.perf.canvasCount = this.cats.length
+    this.perf.heapMB = ((performance as any).memory?.usedJSHeapSize ?? 0) / 1_048_576
+
     this.rafId = requestAnimationFrame((t) => this.frame(t))
   }
 }

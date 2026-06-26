@@ -146,6 +146,19 @@ export function SettingsPanel(): JSX.Element {
         </button>
       </section>
 
+      <section>
+        <button
+          className="setting-row"
+          onClick={() => update({ showPerf: !cfg.showPerf })}
+          type="button"
+        >
+          <span>{t.showPerf}</span>
+          <span className={`switch ${cfg.showPerf ? 'on' : ''}`}>
+            <span className="knob"></span>
+          </span>
+        </button>
+      </section>
+
       <section className="last">
         <h1>{t.startup}</h1>
         <button
