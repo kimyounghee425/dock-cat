@@ -68,7 +68,14 @@ export function SettingsPanel(): JSX.Element {
                 >
                   −
                 </button>
-                <span className="count">{cfg.counts[id]}</span>
+                <input
+                  className="count"
+                  type="number"
+                  min={0}
+                  max={MAX_PER_COLOR}
+                  value={cfg.counts[id]}
+                  onChange={(e) => setCount(id, Number(e.target.value))}
+                />
                 <button
                   onClick={() => setCount(id, cfg.counts[id] + 1)}
                   disabled={cfg.counts[id] >= MAX_PER_COLOR}

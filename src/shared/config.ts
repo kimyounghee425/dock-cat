@@ -19,7 +19,7 @@ export interface PetConfig {
   showPerf: boolean
 }
 
-export const MAX_PER_COLOR = 3
+export const MAX_PER_COLOR = 500
 export const CAT_COLORS: CatColor[] = ['ginger', 'grey', 'white']
 export const SLEEP_OPTIONS: (number | null)[] = [1, 5, 10, 30, null]
 
