@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { CatEngine } from './engine'
-import { cat } from '../pets/cat'
+import { cat } from './cat'
 import { runFacade } from './__fixtures__/runFacade'
 import { goldenFrames } from './__fixtures__/cat-golden'
 import { MAX_X, START_X, SLEEP_AFTER, SEED, mulberry32 } from './__fixtures__/script'

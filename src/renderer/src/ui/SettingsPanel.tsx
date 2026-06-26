@@ -1,8 +1,8 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import type { CatColor, PetConfig } from './pet/types'
-import { CAT_COLORS, DEFAULT_CONFIG, MAX_PER_COLOR, SLEEP_OPTIONS } from '../../shared/config'
-import { CAT_SHEETS } from './pets/cat'
-import { LANGS, STRINGS } from './i18n'
+import type { CatColor, PetConfig } from '../simulation/types'
+import { CAT_COLORS, DEFAULT_CONFIG, MAX_PER_COLOR, SLEEP_OPTIONS } from '../../../shared/config'
+import { CAT_SHEETS } from '../simulation/cat'
+import { LANGS, STRINGS } from '../i18n'
 
 const LANG_SHORT: Record<string, string> = { ko: '한', en: 'EN' }
 
@@ -68,7 +68,14 @@ export function SettingsPanel(): JSX.Element {
                 >
                   −
                 </button>
-                <span className="count">{cfg.counts[id]}</span>
+                <input
+                  className="count"
+                  type="number"
+                  min={0}
+                  max={MAX_PER_COLOR}
+                  value={cfg.counts[id]}
+                  onChange={(e) => setCount(id, Number(e.target.value))}
+                />
                 <button
                   onClick={() => setCount(id, cfg.counts[id] + 1)}
                   disabled={cfg.counts[id] >= MAX_PER_COLOR}
@@ -141,6 +148,19 @@ export function SettingsPanel(): JSX.Element {
         >
           <span>{t.foodBowl}</span>
           <span className={`switch ${cfg.bowlEnabled ? 'on' : ''}`}>
+            <span className="knob"></span>
+          </span>
+        </button>
+      </section>
+
+      <section>
+        <button
+          className="setting-row"
+          onClick={() => update({ showPerf: !cfg.showPerf })}
+          type="button"
+        >
+          <span>{t.showPerf}</span>
+          <span className={`switch ${cfg.showPerf ? 'on' : ''}`}>
             <span className="knob"></span>
           </span>
         </button>

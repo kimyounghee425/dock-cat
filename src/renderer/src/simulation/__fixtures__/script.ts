@@ -5,7 +5,7 @@
 // 실행 가능한 정의.
 
 import type { PetDefinition } from '../types'
-import { cat } from '../../pets/cat'
+import { cat } from '../cat'
 
 // Mulberry32 — 작고 빠른 완전 결정적 시드 PRNG.
 export function mulberry32(seed: number): () => number {

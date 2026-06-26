@@ -272,10 +272,21 @@ html.mode-settings #root {
 }
 
 .stepper .count {
-  min-width: 16px;
+  width: 44px;
   text-align: center;
   font-size: 15px;
   font-weight: 700;
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: inherit;
+  -moz-appearance: textfield;
+}
+.stepper .count::-webkit-inner-spin-button,
+.stepper .count::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .hint {

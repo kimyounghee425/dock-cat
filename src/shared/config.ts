@@ -16,9 +16,10 @@ export interface PetConfig {
   bowlEnabled: boolean
   // 밥그릇 floor x; null이면 "기본 위치"(renderer에서 해석).
   bowlX: number | null
+  showPerf: boolean
 }
 
-export const MAX_PER_COLOR = 3
+export const MAX_PER_COLOR = 500
 export const CAT_COLORS: CatColor[] = ['ginger', 'grey', 'white']
 export const SLEEP_OPTIONS: (number | null)[] = [1, 5, 10, 30, null]
 
@@ -29,7 +30,8 @@ export const DEFAULT_CONFIG: PetConfig = {
   lang: 'en',
   launchAtLogin: false,
   bowlEnabled: false,
-  bowlX: null
+  bowlX: null,
+  showPerf: false
 }
 
 const clampCount = (n: unknown): number =>
@@ -91,7 +93,8 @@ export function normalizeConfig(raw: unknown): PetConfig {
         : DEFAULT_CONFIG.launchAtLogin,
     bowlEnabled:
       typeof r.bowlEnabled === 'boolean' ? r.bowlEnabled : DEFAULT_CONFIG.bowlEnabled,
-    bowlX: isBowlX(r.bowlX) ? r.bowlX : DEFAULT_CONFIG.bowlX
+    bowlX: isBowlX(r.bowlX) ? r.bowlX : DEFAULT_CONFIG.bowlX,
+    showPerf: typeof r.showPerf === 'boolean' ? r.showPerf : DEFAULT_CONFIG.showPerf
   }
 }
 
@@ -117,6 +120,7 @@ export function normalizePartialConfig(raw: unknown): PartialPetConfig {
   if (typeof r.launchAtLogin === 'boolean') out.launchAtLogin = r.launchAtLogin
   if (typeof r.bowlEnabled === 'boolean') out.bowlEnabled = r.bowlEnabled
   if (isBowlX(r.bowlX)) out.bowlX = r.bowlX
+  if (typeof r.showPerf === 'boolean') out.showPerf = r.showPerf
 
   return out
 }

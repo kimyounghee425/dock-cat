@@ -1,4 +1,4 @@
-import type { CatColor, Lang } from './pet/types'
+import type { CatColor, Lang } from './simulation/types'
 
 interface Strings {
   catsCount: (n: number) => string
@@ -20,6 +20,7 @@ interface Strings {
   launchAtLogin: string
   food: string
   foodBowl: string
+  showPerf: string
 }
 
 export const STRINGS: Record<Lang, Strings> = {
@@ -42,7 +43,8 @@ export const STRINGS: Record<Lang, Strings> = {
     startup: '자동 실행',
     launchAtLogin: '로그인 시 DockCat 자동 실행',
     food: '먹이',
-    foodBowl: '밥그릇'
+    foodBowl: '밥그릇',
+    showPerf: '성능 HUD'
   },
   en: {
     catsCount: (n) => `Cats (${n})`,
@@ -63,7 +65,8 @@ export const STRINGS: Record<Lang, Strings> = {
     startup: 'Startup',
     launchAtLogin: 'Launch DockCat at login',
     food: 'Food',
-    foodBowl: 'Food bowl'
+    foodBowl: 'Food bowl',
+    showPerf: 'Perf HUD'
   }
 }
 
