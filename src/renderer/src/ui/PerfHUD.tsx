@@ -1,12 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PetWorld, PerfStats } from '../simulation/world'
+
+const WINDOW = 20 // 20 × 500ms = 10초
 
 export function PerfHUD({ world }: { world: PetWorld | null }): JSX.Element | null {
   const [stats, setStats] = useState<PerfStats | null>(null)
+  const samples = useRef<PerfStats[]>([])
 
   useEffect(() => {
-    if (!world) { setStats(null); return }
-    const id = setInterval(() => setStats({ ...world.perf }), 500)
+    if (!world) { samples.current = []; setStats(null); return }
+    const id = setInterval(() => {
+      const s = { ...world.perf }
+      samples.current = [...samples.current.slice(-(WINDOW - 1)), s]
+      const n = samples.current.length
+      const avg = (key: keyof PerfStats): number =>
+        samples.current.reduce((sum, r) => sum + (r[key] as number), 0) / n
+      setStats({
+        fps: avg('fps'),
+        frameMs: avg('frameMs'),
+        longFrames: s.longFrames,
+        tickMs: avg('tickMs'),
+        renderMs: avg('renderMs'),
+        heapMB: avg('heapMB'),
+        canvasCount: s.canvasCount,
+        catCount: s.catCount,
+      })
+    }, 500)
     return () => clearInterval(id)
   }, [world])
 

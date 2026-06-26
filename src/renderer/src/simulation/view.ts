@@ -26,6 +26,10 @@ export class PetView {
   private frameIdx = 0
   private acc = 0
   private contentBox: { x: number; y: number; w: number; h: number } | null = null
+  // key: "row:frameIdx" → 한 번 계산한 contentBox 재사용 (getImageData 런타임 호출 제거)
+  private frameCache = new Map<string, typeof this.contentBox>()
+  // key: "row:frames" → 한 번 계산한 floorOffset 재사용
+  private floorCache = new Map<string, number>()
 
   constructor(stage: HTMLElement, frameSize: number, displaySize: number, sheetUrl: string) {
     this.frameSize = frameSize
@@ -104,7 +108,13 @@ export class PetView {
     const F = this.frameSize
     this.ctx.clearRect(0, 0, F, F)
     this.ctx.drawImage(this.img, this.frameIdx * F, this.anim.row * F, F, F, 0, 0, F, F)
-    this.measure()
+    const key = `${this.anim.row}:${this.frameIdx}`
+    if (this.frameCache.has(key)) {
+      this.contentBox = this.frameCache.get(key)!
+    } else {
+      this.measure()
+      this.frameCache.set(key, this.contentBox)
+    }
   }
 
   private measure(): void {
@@ -133,6 +143,12 @@ export class PetView {
   private computeFloor(): void {
     if (!this.img || !this.anim) return
     const F = this.frameSize
+    const key = `${this.anim.row}:${this.anim.frames}`
+    if (this.floorCache.has(key)) {
+      this.canvas.style.bottom = `${this.floorCache.get(key)!}px`
+      this.draw()
+      return
+    }
     let lowest = -1
     for (let f = 0; f < this.anim.frames; f++) {
       this.ctx.clearRect(0, 0, F, F)
@@ -152,7 +168,9 @@ export class PetView {
         }
       }
     }
-    if (lowest >= 0) this.canvas.style.bottom = `${-(F - 1 - lowest) * this.scale}px`
+    const offset = lowest >= 0 ? -(F - 1 - lowest) * this.scale : 0
+    this.floorCache.set(key, offset)
+    if (lowest >= 0) this.canvas.style.bottom = `${offset}px`
     this.draw()
   }
 }
