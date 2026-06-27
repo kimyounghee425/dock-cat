@@ -676,6 +676,9 @@ export class PetWorld {
           } else {
             engine.x = soa.x[j]
             engine.y = soa.y[j]
+            engine.inactivity = soa.inactivity[j]
+            engine.remaining = soa.remaining[j]
+            if (engine.jump.active) engine.jump = { ...engine.jump, t: soa.jumpT[j] }
           }
         }
       } else {
