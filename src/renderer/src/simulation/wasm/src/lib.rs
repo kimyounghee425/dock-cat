@@ -40,6 +40,7 @@ pub fn tick_awake(
                 ys[i] = jump_heights[i] * (std::f32::consts::PI * t_new).sin();
                 jump_ts[i] += dt;
             }
+            remainings[i] -= dt; // awakeTick의 `remaining: context.remaining - dt`와 동일하게
             continue;
         }
 
