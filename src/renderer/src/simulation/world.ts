@@ -668,17 +668,18 @@ export class PetWorld {
               { active: !!soa.jumpActive[j], t: soa.jumpT[j], dur: soa.jumpDur[j], fromX: soa.jumpFromX[j], dx: soa.jumpDx[j] }
             )
             engine.tick(dt)
-            if (engine.animKey !== c.lastKey) {
-              const anim = this.def.anim[engine.animKey]
-              if (anim) c.view.setAnimation(anim)
-              c.lastKey = engine.animKey
-            }
           } else {
             engine.x = soa.x[j]
             engine.y = soa.y[j]
             engine.inactivity = soa.inactivity[j]
             engine.remaining = soa.remaining[j]
             if (engine.jump.active) engine.jump = { ...engine.jump, t: soa.jumpT[j] }
+          }
+          // DRAG_START/GO_EAT 등 TICK 외 이벤트도 animKey를 바꾸므로 항상 체크
+          if (engine.animKey !== c.lastKey) {
+            const anim = this.def.anim[engine.animKey]
+            if (anim) c.view.setAnimation(anim)
+            c.lastKey = engine.animKey
           }
         }
       } else {
