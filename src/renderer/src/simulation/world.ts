@@ -1,7 +1,7 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
-import { WebGLRenderer, type SpriteRenderInfo } from './WebGLRenderer'
+import { WebGLRenderer } from './WebGLRenderer'
 import { clampX, pickTopmost, pointInRect } from './geometry'
 import { assignNearestFree, computeGather } from './feeding-logic'
 import { reduce, type Effect, type GestureState } from './gesture'
@@ -698,14 +698,14 @@ export class PetWorld {
     this.perf.tickMs = performance.now() - t0
 
     const t1 = performance.now()
-    const sprites: SpriteRenderInfo[] = []
+    this.renderer.beginFrame(window.innerHeight)
     for (const c of this.cats) {
       c.view.setPosition(c.engine.x, c.engine.y)
       c.view.tick(dt)
       const rs = c.view.getRenderState()
-      if (rs) sprites.push({ color: c.color, x: c.engine.x, y: c.engine.y, ...rs })
+      if (rs) this.renderer.writeSprite(c.color, c.engine.x, c.engine.y, rs.frameIdx, rs.animRow, rs.lowestRow)
     }
-    this.renderer.render(sprites, window.innerHeight)
+    this.renderer.endFrame()
     this.perf.renderMs = performance.now() - t1
 
     this.perf.catCount = this.cats.length
