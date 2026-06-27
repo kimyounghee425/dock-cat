@@ -1,4 +1,5 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
+import { tick_awake } from './wasm/pkg/cat_wasm'
 import { CatEngine } from './engine'
 import { PetView } from './view'
 import { WebGLRenderer, type SpriteRenderInfo } from './WebGLRenderer'
@@ -87,6 +88,25 @@ export class PetWorld {
 
   private rafId = 0
   private alive = true
+  private soa = {
+    x:           new Float32Array(12_000),
+    y:           new Float32Array(12_000),
+    speed:       new Float32Array(12_000),
+    facing:      new Uint8Array(12_000),
+    moving:      new Uint8Array(12_000),
+    remaining:   new Float32Array(12_000),
+    inactivity:  new Float32Array(12_000),
+    sleepAfter:  new Float32Array(12_000),
+    maxX:        new Float32Array(12_000),
+    jumpActive:  new Uint8Array(12_000),
+    jumpT:       new Float32Array(12_000),
+    jumpDur:     new Float32Array(12_000),
+    jumpFromX:   new Float32Array(12_000),
+    jumpDx:      new Float32Array(12_000),
+    jumpHeight:  new Float32Array(12_000),
+    needsXState: new Uint8Array(12_000),
+  }
+  private soaIdx: number[] = []
   private onPointerDown: (e: PointerEvent) => void
   private onPointerMove: (e: PointerEvent) => void
   private onPointerUp: (e: PointerEvent) => void
@@ -591,12 +611,60 @@ export class PetWorld {
     if (this.pellets.some((p) => !p.assignedCat && !p.expiring)) this.assignPellets()
 
     const t0 = performance.now()
-    for (const c of this.cats) {
-      c.engine.tick(dt)
-      if (c.engine.animKey !== c.lastKey) {
-        const anim = this.def.anim[c.engine.animKey]
-        if (anim) c.view.setAnimation(anim)
-        c.lastKey = c.engine.animKey
+    const { soa } = this
+    const maxX = this.getMaxX()
+    let n = 0
+    for (let i = 0; i < this.cats.length; i++) {
+      const { engine } = this.cats[i]
+      if (engine.sleeping) continue
+      soa.x[n] = engine.x
+      soa.y[n] = engine.y
+      soa.speed[n] = engine.speed
+      soa.facing[n] = engine.facing === 'right' ? 1 : 0
+      soa.moving[n] = engine.moving ? 1 : 0
+      soa.remaining[n] = engine.remaining
+      soa.inactivity[n] = engine.inactivity
+      soa.sleepAfter[n] = engine.sleepAfter
+      soa.maxX[n] = maxX
+      soa.jumpActive[n] = engine.jump.active ? 1 : 0
+      soa.jumpT[n] = engine.jump.t
+      soa.jumpDur[n] = engine.jump.dur
+      soa.jumpFromX[n] = engine.jump.fromX
+      soa.jumpDx[n] = engine.jump.dx
+      soa.jumpHeight[n] = this.def.jumpHeight
+      this.soaIdx[n] = i
+      n++
+    }
+    if (n > 0) {
+      tick_awake(
+        soa.x.subarray(0, n), soa.y.subarray(0, n), soa.speed.subarray(0, n),
+        soa.facing.subarray(0, n), soa.moving.subarray(0, n),
+        soa.remaining.subarray(0, n), soa.inactivity.subarray(0, n),
+        soa.sleepAfter.subarray(0, n), soa.maxX.subarray(0, n),
+        soa.jumpActive.subarray(0, n), soa.jumpT.subarray(0, n),
+        soa.jumpDur.subarray(0, n), soa.jumpFromX.subarray(0, n), soa.jumpDx.subarray(0, n),
+        soa.jumpHeight.subarray(0, n),
+        soa.needsXState.subarray(0, n),
+        dt, n
+      )
+    }
+    for (let j = 0; j < n; j++) {
+      const c = this.cats[this.soaIdx[j]]
+      const { engine } = c
+      if (soa.needsXState[j]) {
+        engine.syncPhysics(
+          soa.x[j], soa.y[j], soa.remaining[j], soa.inactivity[j],
+          { active: !!soa.jumpActive[j], t: soa.jumpT[j], dur: soa.jumpDur[j], fromX: soa.jumpFromX[j], dx: soa.jumpDx[j] }
+        )
+        engine.tick(dt)
+        if (engine.animKey !== c.lastKey) {
+          const anim = this.def.anim[engine.animKey]
+          if (anim) c.view.setAnimation(anim)
+          c.lastKey = engine.animKey
+        }
+      } else {
+        engine.x = soa.x[j]
+        engine.y = soa.y[j]
       }
     }
     this.perf.tickMs = performance.now() - t0

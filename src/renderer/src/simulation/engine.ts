@@ -1,6 +1,7 @@
 import { createActor, type Actor } from 'xstate'
-import type { PetDefinition } from './types'
+import type { Facing, PetDefinition } from './types'
 import { catMachine, type CatEvent } from './catMachine'
+import { NO_JUMP, type Jump } from './behaviors'
 
 // catMachine을 돌리는 XState actor 위의 얇은 FACADE. 행동 로직은 머신에 있고, 모든 public
 // 메서드는 `actor.send(...)`로 위임하며 읽기 필드/질의는 snapshot을 읽는다. public 표면은
@@ -9,8 +10,16 @@ export class CatEngine {
   // x/y/animKey를 snapshot에서 plain 필드로 미러링 → PetWorld의 매 프레임 읽기가 getSnapshot()을
   // 반복 호출하지 않게. 아래 구독이 최신으로 유지(snapshot은 매 send마다 동기 emit).
   x: number
-  y = 0 // 바닥 위 높이 px (도약 중에만 nonzero)
+  y = 0
   animKey = 'tailwag_sit_front'
+  sleeping = false
+  speed = 0
+  facing: Facing = 'left'
+  moving = false
+  remaining = 0
+  inactivity = 0
+  sleepAfter: number
+  jump: Jump = NO_JUMP
 
   private actor: Actor<typeof catMachine>
   private sub: { unsubscribe: () => void }
@@ -24,6 +33,7 @@ export class CatEngine {
     rng?: () => number
   }) {
     this.x = opts.startX
+    this.sleepAfter = opts.sleepAfter
     this.actor = createActor(catMachine, {
       input: {
         def: opts.def,
@@ -35,9 +45,18 @@ export class CatEngine {
     })
     // 매 snapshot마다 렌더 필드 미러링.
     this.sub = this.actor.subscribe((snapshot) => {
-      this.x = snapshot.context.x
-      this.y = snapshot.context.y
-      this.animKey = snapshot.context.animKey
+      const ctx = snapshot.context
+      this.x = ctx.x
+      this.y = ctx.y
+      this.animKey = ctx.animKey
+      this.sleeping = snapshot.matches('asleep')
+      this.speed = ctx.speed
+      this.facing = ctx.facing
+      this.moving = ctx.moving
+      this.remaining = ctx.remaining
+      this.inactivity = ctx.inactivity
+      this.sleepAfter = ctx.sleepAfter
+      this.jump = ctx.jump
     })
     this.actor.start()
   }
@@ -123,6 +142,10 @@ export class CatEngine {
 
   tick(dt: number): void {
     this.send({ type: 'TICK', dt })
+  }
+
+  syncPhysics(x: number, y: number, remaining: number, inactivity: number, jump: Jump): void {
+    this.send({ type: 'SYNC_PHYSICS', x, y, remaining, inactivity, jump })
   }
 
   // actor + 구독 정리. Idempotent: 여러 번 호출해도 안전(방어적).

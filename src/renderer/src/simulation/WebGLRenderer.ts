@@ -123,8 +123,6 @@ export class WebGLRenderer {
     const { gl } = this
     const tex = gl.createTexture()!
     gl.bindTexture(gl.TEXTURE_2D, tex)
-    // 텍스처 Y축 반전: 스프라이트 시트 row 0(상단)이 UV V=0에 매핑되도록
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
