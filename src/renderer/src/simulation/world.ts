@@ -673,7 +673,7 @@ export class PetWorld {
             engine.y = soa.y[j]
             engine.inactivity = soa.inactivity[j]
             engine.remaining = soa.remaining[j]
-            if (engine.jump.active) engine.jump = { ...engine.jump, t: soa.jumpT[j] }
+            if (engine.jump.active) engine.jump.t = soa.jumpT[j]
           }
           // DRAG_START/GO_EAT 등 TICK 외 이벤트도 animKey를 바꾸므로 항상 체크
           if (engine.animKey !== c.lastKey) {
