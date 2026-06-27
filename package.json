@@ -25,6 +25,7 @@
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
+    "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
     "vitest": "^2.1.9"
   },
