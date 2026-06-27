@@ -9,7 +9,8 @@ import {
   rand,
   startIdle,
   tickArc,
-  type CatContext
+  type CatContext,
+  type Jump
 } from './behaviors'
 
 // catMachine — 고양이 행동 FSM, 전이의 단일 출처(canonical transition map).
@@ -61,6 +62,7 @@ export type CatEvent =
   | { type: 'SET_SLEEP_AFTER'; sec: number }
   | { type: 'SET_NO_WAKE'; on: boolean }
   | { type: 'CLEAR_PENDING_CALLBACKS' }
+  | { type: 'SYNC_PHYSICS'; x: number; y: number; remaining: number; inactivity: number; jump: Jump }
 
 // 클릭 반응(meow/hiss) 1회성 pose를 유지하는 시간(초). 그 뒤 autonomous로 복귀.
 const CLICK_REACT_SEC = 1.0
@@ -266,6 +268,15 @@ export const catMachine = setup({
     },
     CLEAR_PENDING_CALLBACKS: {
       actions: assign({ pendingAfterTransition: [] })
+    },
+    SYNC_PHYSICS: {
+      actions: assign(({ event }) => ({
+        x: event.x,
+        y: event.y,
+        remaining: event.remaining,
+        inactivity: event.inactivity,
+        jump: event.jump
+      }))
     }
   },
   states: {
