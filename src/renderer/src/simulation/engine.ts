@@ -11,6 +11,7 @@ export class CatEngine {
   x: number
   y = 0 // 바닥 위 높이 px (도약 중에만 nonzero)
   animKey = 'tailwag_sit_front'
+  sleeping = false
 
   private actor: Actor<typeof catMachine>
   private sub: { unsubscribe: () => void }
@@ -38,6 +39,7 @@ export class CatEngine {
       this.x = snapshot.context.x
       this.y = snapshot.context.y
       this.animKey = snapshot.context.animKey
+      this.sleeping = snapshot.matches('asleep')
     })
     this.actor.start()
   }

@@ -592,6 +592,7 @@ export class PetWorld {
 
     const t0 = performance.now()
     for (const c of this.cats) {
+      if (c.engine.sleeping) continue
       c.engine.tick(dt)
       if (c.engine.animKey !== c.lastKey) {
         const anim = this.def.anim[c.engine.animKey]
