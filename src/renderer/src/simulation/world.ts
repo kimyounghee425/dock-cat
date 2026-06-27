@@ -91,6 +91,7 @@ export class PetWorld {
   private pellets: Pellet[] = []
   private onKeyDown: (e: KeyboardEvent) => void
   private last = performance.now()
+  private longWindowStart = performance.now()
   readonly perf: PerfStats = { fps: 0, frameMs: 0, longFrames: 0, tickMs: 0, renderMs: 0, heapMB: 0, canvasCount: 0, catCount: 0 }
 
   private renderer: WebGLRenderer
@@ -614,6 +615,10 @@ export class PetWorld {
 
     this.perf.fps = this.perf.fps * 0.9 + (1000 / elapsed) * 0.1
     this.perf.frameMs = elapsed
+    if (now - this.longWindowStart >= 10_000) {
+      this.perf.longFrames = 0
+      this.longWindowStart = now
+    }
     if (elapsed > 16) this.perf.longFrames++
 
     // free 고양이를 기다리는 pellet이 있으면 배정 재시도(방금 다 먹었거나 깼거나 내려놨을

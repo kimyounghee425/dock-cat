@@ -189,6 +189,12 @@ export class WebGLRenderer {
   }
 
   destroy(): void {
+    const { gl } = this
+    for (const ti of this.textures.values()) gl.deleteTexture(ti.tex)
+    gl.deleteBuffer(this.posBuf)
+    gl.deleteBuffer(this.uvBuf)
+    gl.deleteVertexArray(this.vao)
+    gl.deleteProgram(this.program)
     this.canvas.remove()
   }
 
