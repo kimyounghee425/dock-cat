@@ -1,17 +1,19 @@
 import type { Anim } from './types'
-import { spriteDestY, spriteHitRect, type Box, type Rect } from './geometry'
+import { spriteHitRect, type Box, type Rect } from './geometry'
 
-// 픽셀을 "불투명"으로 칠 최소 알파(0-255). 안티에일리어싱 가장자리의 거의 투명한
-// 픽셀을 히트박스/바닥선에서 제외하기 위한 컷오프.
 const ALPHA_OPAQUE_THRESHOLD = 10
 
 export type HitRect = Rect
 
-// 렌더 어댑터: shared canvas에 스프라이트 현재 프레임을 nearest-neighbour로 그린다.
-// left/right가 별도 row라 미러링 없음. 가장 아래 불투명 row(lowestRow)를 바닥에 맞추고,
-// 불투명 bounding box를 히트테스트용으로 노출한다.
+export interface RenderState {
+  animRow: number
+  frameIdx: number
+  lowestRow: number
+}
+
+// 렌더 어댑터: 픽셀 측정(contentBox / lowestRow)과 히트박스 노출을 담당.
+// 실제 화면 드로잉은 WebGLRenderer가 전담 — 이 클래스는 DOM에 아무것도 추가하지 않는다.
 export class PetView {
-  private sharedCtx: CanvasRenderingContext2D
   // 픽셀 측정(measure/computeFloor)만을 위한 오프스크린 canvas — DOM에 추가하지 않음.
   private offscreen: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -33,8 +35,7 @@ export class PetView {
   // key: "row:frames" → lowestRow 캐시
   private floorCache = new Map<string, number>()
 
-  constructor(sharedCtx: CanvasRenderingContext2D, frameSize: number, displaySize: number, sheetUrl: string) {
-    this.sharedCtx = sharedCtx
+  constructor(frameSize: number, displaySize: number, sheetUrl: string) {
     this.frameSize = frameSize
     this.scale = displaySize / frameSize
 
@@ -72,7 +73,7 @@ export class PetView {
       this.acc -= step
       this.frameIdx = (this.frameIdx + 1) % this.anim.frames
     }
-    this.draw()
+    this.updateContentBox()
   }
 
   setPosition(x: number, y: number): void {
@@ -84,18 +85,23 @@ export class PetView {
     // 오프스크린 canvas는 DOM에 없으므로 별도 정리 불필요.
   }
 
+  // WebGLRenderer가 드로잉에 필요한 상태. 이미지·애니메이션 미설정 시 null.
+  getRenderState(): RenderState | null {
+    if (!this.anim) return null
+    return { animRow: this.anim.row, frameIdx: this.frameIdx, lowestRow: this.lowestRow }
+  }
+
   getHitRect(): HitRect {
     const F = this.frameSize
     const box = this.contentBox ?? { x: 0, y: 0, w: F, h: F }
     return spriteHitRect(this.x, this.y, box, this.lowestRow, this.scale, window.innerHeight)
   }
 
-  private draw(): void {
+  // 오프스크린 canvas에 현재 프레임을 그려 contentBox를 갱신(캐시).
+  // 화면 렌더링은 WebGLRenderer가 담당하므로 여기선 측정만 한다.
+  private updateContentBox(): void {
     if (!this.img || !this.anim) return
     const F = this.frameSize
-    const D = F * this.scale
-
-    // 오프스크린: contentBox 측정
     this.ctx.clearRect(0, 0, F, F)
     this.ctx.drawImage(this.img, this.frameIdx * F, this.anim.row * F, F, F, 0, 0, F, F)
     const key = `${this.anim.row}:${this.frameIdx}`
@@ -105,10 +111,6 @@ export class PetView {
       this.measure()
       this.frameCache.set(key, this.contentBox)
     }
-
-    // shared canvas: 좌표 계산 후 렌더
-    const destY = spriteDestY(this.y, this.lowestRow, this.scale, window.innerHeight)
-    this.sharedCtx.drawImage(this.img, this.frameIdx * F, this.anim.row * F, F, F, this.x, destY, D, D)
   }
 
   private measure(): void {

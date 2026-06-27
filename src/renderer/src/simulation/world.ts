@@ -1,6 +1,7 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
+import { WebGLRenderer, type SpriteRenderInfo } from './WebGLRenderer'
 import { clampX, pickTopmost, pointInRect } from './geometry'
 import { assignNearestFree, computeGather } from './feeding-logic'
 import { reduce, type Effect, type GestureState } from './gesture'
@@ -81,8 +82,7 @@ export class PetWorld {
   private last = performance.now()
   readonly perf: PerfStats = { fps: 0, frameMs: 0, longFrames: 0, tickMs: 0, renderMs: 0, heapMB: 0, canvasCount: 0, catCount: 0 }
 
-  private sharedCanvas: HTMLCanvasElement
-  private sharedCtx: CanvasRenderingContext2D
+  private renderer: WebGLRenderer
   private onResize: () => void
 
   private rafId = 0
@@ -102,18 +102,13 @@ export class PetWorld {
     this.sheets = sheets
     this.sleepAfterSec = sleepAfterSec
 
-    this.sharedCanvas = document.createElement('canvas')
-    this.sharedCanvas.width = window.innerWidth
-    this.sharedCanvas.height = window.innerHeight
-    this.sharedCanvas.style.cssText = 'position:fixed;top:0;left:0;pointer-events:none;'
-    stage.appendChild(this.sharedCanvas)
-    this.sharedCtx = this.sharedCanvas.getContext('2d')!
-    this.sharedCtx.imageSmoothingEnabled = false
-
-    this.onResize = (): void => {
-      this.sharedCanvas.width = window.innerWidth
-      this.sharedCanvas.height = window.innerHeight
+    // maxInstances: 색상 3개 × MAX_PER_COLOR(4000) = 12000
+    this.renderer = new WebGLRenderer(stage, def.frameSize, def.displaySize, 12_000)
+    for (const [color, url] of Object.entries(sheets) as [CatColor, string][]) {
+      void this.renderer.loadTexture(color, url)
     }
+
+    this.onResize = (): void => { this.renderer.resize() }
     window.addEventListener('resize', this.onResize)
 
     this.trash = document.createElement('div')
@@ -162,7 +157,7 @@ export class PetWorld {
     this.cats = []
     this.removeBowl()
     this.trash.remove()
-    this.sharedCanvas.remove()
+    this.renderer.destroy()
   }
 
   onDelete(cb: () => void): void {
@@ -265,7 +260,7 @@ export class PetWorld {
       sleepAfter: this.sleepAfterSec
     })
     engine.setNoWake(this.noWake)
-    const view = new PetView(this.sharedCtx, this.def.frameSize, this.def.displaySize, this.sheets[color])
+    const view = new PetView(this.def.frameSize, this.def.displaySize, this.sheets[color])
     this.cats.push({ color, engine, view, lastKey: '' })
   }
 
@@ -607,11 +602,14 @@ export class PetWorld {
     this.perf.tickMs = performance.now() - t0
 
     const t1 = performance.now()
-    this.sharedCtx.clearRect(0, 0, this.sharedCanvas.width, this.sharedCanvas.height)
+    const sprites: SpriteRenderInfo[] = []
     for (const c of this.cats) {
       c.view.setPosition(c.engine.x, c.engine.y)
       c.view.tick(dt)
+      const rs = c.view.getRenderState()
+      if (rs) sprites.push({ color: c.color, x: c.engine.x, y: c.engine.y, ...rs })
     }
+    this.renderer.render(sprites, window.innerHeight)
     this.perf.renderMs = performance.now() - t1
 
     this.perf.catCount = this.cats.length
