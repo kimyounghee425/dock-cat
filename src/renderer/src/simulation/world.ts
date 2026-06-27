@@ -1,6 +1,7 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
+import { WebGLRenderer, type SpriteRenderInfo } from './WebGLRenderer'
 import { clampX, pickTopmost, pointInRect } from './geometry'
 import { assignNearestFree, computeGather } from './feeding-logic'
 import { reduce, type Effect, type GestureState } from './gesture'
@@ -81,6 +82,9 @@ export class PetWorld {
   private last = performance.now()
   readonly perf: PerfStats = { fps: 0, frameMs: 0, longFrames: 0, tickMs: 0, renderMs: 0, heapMB: 0, canvasCount: 0, catCount: 0 }
 
+  private renderer: WebGLRenderer
+  private onResize: () => void
+
   private rafId = 0
   private alive = true
   private onPointerDown: (e: PointerEvent) => void
@@ -97,6 +101,15 @@ export class PetWorld {
     this.def = def
     this.sheets = sheets
     this.sleepAfterSec = sleepAfterSec
+
+    // maxInstances: 색상 3개 × MAX_PER_COLOR(4000) = 12000
+    this.renderer = new WebGLRenderer(stage, def.frameSize, def.displaySize, 12_000)
+    for (const [color, url] of Object.entries(sheets) as [CatColor, string][]) {
+      void this.renderer.loadTexture(color, url)
+    }
+
+    this.onResize = (): void => { this.renderer.resize() }
+    window.addEventListener('resize', this.onResize)
 
     this.trash = document.createElement('div')
     this.trash.className = 'trash'
@@ -134,6 +147,7 @@ export class PetWorld {
     window.removeEventListener('pointermove', this.onPointerMove)
     window.removeEventListener('pointerup', this.onPointerUp)
     window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('resize', this.onResize)
     this.clearFeeding() // 들고 있던 pellet 제거 + 먹이 타깃 해제
     this.clearPellets() // 바닥 pellet 제거, 타이머 정리 + 진행 중 eat 취소
     for (const c of this.cats) {
@@ -143,6 +157,7 @@ export class PetWorld {
     this.cats = []
     this.removeBowl()
     this.trash.remove()
+    this.renderer.destroy()
   }
 
   onDelete(cb: () => void): void {
@@ -245,7 +260,7 @@ export class PetWorld {
       sleepAfter: this.sleepAfterSec
     })
     engine.setNoWake(this.noWake)
-    const view = new PetView(this.stage, this.def.frameSize, this.def.displaySize, this.sheets[color])
+    const view = new PetView(this.def.frameSize, this.def.displaySize, this.sheets[color])
     this.cats.push({ color, engine, view, lastKey: '' })
   }
 
@@ -587,14 +602,18 @@ export class PetWorld {
     this.perf.tickMs = performance.now() - t0
 
     const t1 = performance.now()
+    const sprites: SpriteRenderInfo[] = []
     for (const c of this.cats) {
-      c.view.tick(dt)
       c.view.setPosition(c.engine.x, c.engine.y)
+      c.view.tick(dt)
+      const rs = c.view.getRenderState()
+      if (rs) sprites.push({ color: c.color, x: c.engine.x, y: c.engine.y, ...rs })
     }
+    this.renderer.render(sprites, window.innerHeight)
     this.perf.renderMs = performance.now() - t1
 
     this.perf.catCount = this.cats.length
-    this.perf.canvasCount = this.cats.length
+    this.perf.canvasCount = 1
     this.perf.heapMB = ((performance as any).memory?.usedJSHeapSize ?? 0) / 1_048_576
 
     this.rafId = requestAnimationFrame((t) => this.frame(t))
