@@ -1,15 +1,6 @@
 import type { CatColor } from './types'
 import { spriteDestY } from './geometry'
 
-export interface SpriteRenderInfo {
-  color: CatColor
-  x: number
-  y: number        // engine y (0 = 바닥, 위로 증가)
-  animRow: number
-  frameIdx: number
-  lowestRow: number
-}
-
 const VERT = /* glsl */ `#version 300 es
 in vec2 aVertex;
 in vec2 aPos;
@@ -43,6 +34,12 @@ interface TextureInfo {
   rows: number
 }
 
+interface ColorSlice {
+  pos: Float32Array
+  uv: Float32Array
+  n: number
+}
+
 export class WebGLRenderer {
   readonly canvas: HTMLCanvasElement
   private gl: WebGL2RenderingContext
@@ -50,8 +47,8 @@ export class WebGLRenderer {
   private vao: WebGLVertexArrayObject
   private posBuf: WebGLBuffer
   private uvBuf: WebGLBuffer
-  private posData: Float32Array
-  private uvData: Float32Array
+  private slices: Record<CatColor, ColorSlice>
+  private screenH = 0
   private textures = new Map<CatColor, TextureInfo>()
   private scale: number
   private frameSize: number
@@ -86,8 +83,12 @@ export class WebGLRenderer {
     gl.uniform2f(this.uScreen, this.canvas.width, this.canvas.height)
     gl.viewport(0, 0, this.canvas.width, this.canvas.height)
 
-    this.posData = new Float32Array(maxInstances * 2)
-    this.uvData  = new Float32Array(maxInstances * 2)
+    const maxI2 = maxInstances * 2
+    this.slices = {
+      ginger: { pos: new Float32Array(maxI2), uv: new Float32Array(maxI2), n: 0 },
+      grey:   { pos: new Float32Array(maxI2), uv: new Float32Array(maxI2), n: 0 },
+      white:  { pos: new Float32Array(maxI2), uv: new Float32Array(maxI2), n: 0 },
+    }
 
     // TRIANGLE_STRIP quad: TL(0,0) TR(1,0) BL(0,1) BR(1,1)
     const quad = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1])
@@ -102,12 +103,12 @@ export class WebGLRenderer {
 
     this.posBuf = gl.createBuffer()!
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuf)
-    gl.bufferData(gl.ARRAY_BUFFER, this.posData, gl.DYNAMIC_DRAW)
+    gl.bufferData(gl.ARRAY_BUFFER, maxI2 * 4, gl.DYNAMIC_DRAW)
     this.setAttrib('aPos', 2, 1)
 
     this.uvBuf = gl.createBuffer()!
     gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuf)
-    gl.bufferData(gl.ARRAY_BUFFER, this.uvData, gl.DYNAMIC_DRAW)
+    gl.bufferData(gl.ARRAY_BUFFER, maxI2 * 4, gl.DYNAMIC_DRAW)
     this.setAttrib('aUV', 2, 1)
 
     gl.bindVertexArray(null)
@@ -135,40 +136,46 @@ export class WebGLRenderer {
     })
   }
 
-  // 색상별 최대 3번 drawArraysInstanced. 텍스처가 아직 로드 안 된 색상은 건너뜀.
-  render(sprites: ReadonlyArray<SpriteRenderInfo>, screenHeight: number): void {
-    const { gl } = this
-    gl.clear(gl.COLOR_BUFFER_BIT)
-    if (sprites.length === 0) return
-    gl.bindVertexArray(this.vao)
+  // 프레임 시작: 색상별 카운트 초기화 + 화면 클리어
+  beginFrame(screenHeight: number): void {
+    this.screenH = screenHeight
+    this.slices.ginger.n = 0
+    this.slices.grey.n = 0
+    this.slices.white.n = 0
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT)
+  }
 
+  // 고양이 1마리분 데이터를 색상별 typed array에 직접 기록 (객체 생성 없음)
+  writeSprite(color: CatColor, x: number, y: number, frameIdx: number, animRow: number, lowestRow: number): void {
+    const ti = this.textures.get(color)
+    if (!ti) return
+    const s = this.slices[color]
+    const i = s.n * 2
+    s.pos[i]     = x
+    s.pos[i + 1] = spriteDestY(y, lowestRow, this.scale, this.screenH)
+    s.uv[i]      = frameIdx / ti.cols
+    s.uv[i + 1]  = animRow  / ti.rows
+    s.n++
+  }
+
+  // 프레임 끝: 색상별 bufferSubData + drawArraysInstanced
+  endFrame(): void {
+    const { gl } = this
+    gl.bindVertexArray(this.vao)
     for (const color of COLORS) {
+      const s = this.slices[color]
+      if (s.n === 0) continue
       const ti = this.textures.get(color)
       if (!ti) continue
-
-      let n = 0
-      for (const s of sprites) {
-        if (s.color !== color) continue
-        this.posData[n * 2]     = s.x
-        this.posData[n * 2 + 1] = spriteDestY(s.y, s.lowestRow, this.scale, screenHeight)
-        this.uvData[n * 2]      = s.frameIdx / ti.cols
-        this.uvData[n * 2 + 1]  = s.animRow  / ti.rows
-        n++
-      }
-      if (n === 0) continue
-
       gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuf)
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.posData.subarray(0, n * 2))
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, s.pos.subarray(0, s.n * 2))
       gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuf)
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.uvData.subarray(0, n * 2))
-
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, s.uv.subarray(0, s.n * 2))
       gl.activeTexture(gl.TEXTURE0)
       gl.bindTexture(gl.TEXTURE_2D, ti.tex)
       gl.uniform2f(this.uFrameUV, 1 / ti.cols, 1 / ti.rows)
-
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n)
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, s.n)
     }
-
     gl.bindVertexArray(null)
   }
 
@@ -182,6 +189,12 @@ export class WebGLRenderer {
   }
 
   destroy(): void {
+    const { gl } = this
+    for (const ti of this.textures.values()) gl.deleteTexture(ti.tex)
+    gl.deleteBuffer(this.posBuf)
+    gl.deleteBuffer(this.uvBuf)
+    gl.deleteVertexArray(this.vao)
+    gl.deleteProgram(this.program)
     this.canvas.remove()
   }
 

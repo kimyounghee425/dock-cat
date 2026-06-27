@@ -1,7 +1,7 @@
 import type { CatColor, CatCounts, PetDefinition } from './types'
 import { CatEngine } from './engine'
 import { PetView } from './view'
-import { WebGLRenderer, type SpriteRenderInfo } from './WebGLRenderer'
+import { WebGLRenderer } from './WebGLRenderer'
 import { clampX, pickTopmost, pointInRect } from './geometry'
 import { assignNearestFree, computeGather } from './feeding-logic'
 import { reduce, type Effect, type GestureState } from './gesture'
@@ -91,6 +91,7 @@ export class PetWorld {
   private pellets: Pellet[] = []
   private onKeyDown: (e: KeyboardEvent) => void
   private last = performance.now()
+  private longWindowStart = performance.now()
   readonly perf: PerfStats = { fps: 0, frameMs: 0, longFrames: 0, tickMs: 0, renderMs: 0, heapMB: 0, canvasCount: 0, catCount: 0 }
 
   private renderer: WebGLRenderer
@@ -614,6 +615,10 @@ export class PetWorld {
 
     this.perf.fps = this.perf.fps * 0.9 + (1000 / elapsed) * 0.1
     this.perf.frameMs = elapsed
+    if (now - this.longWindowStart >= 10_000) {
+      this.perf.longFrames = 0
+      this.longWindowStart = now
+    }
     if (elapsed > 16) this.perf.longFrames++
 
     // free 고양이를 기다리는 pellet이 있으면 배정 재시도(방금 다 먹었거나 깼거나 내려놨을
@@ -673,7 +678,7 @@ export class PetWorld {
             engine.y = soa.y[j]
             engine.inactivity = soa.inactivity[j]
             engine.remaining = soa.remaining[j]
-            if (engine.jump.active) engine.jump = { ...engine.jump, t: soa.jumpT[j] }
+            if (engine.jump.active) engine.jump.t = soa.jumpT[j]
           }
           // DRAG_START/GO_EAT 등 TICK 외 이벤트도 animKey를 바꾸므로 항상 체크
           if (engine.animKey !== c.lastKey) {
@@ -698,14 +703,14 @@ export class PetWorld {
     this.perf.tickMs = performance.now() - t0
 
     const t1 = performance.now()
-    const sprites: SpriteRenderInfo[] = []
+    this.renderer.beginFrame(window.innerHeight)
     for (const c of this.cats) {
       c.view.setPosition(c.engine.x, c.engine.y)
       c.view.tick(dt)
       const rs = c.view.getRenderState()
-      if (rs) sprites.push({ color: c.color, x: c.engine.x, y: c.engine.y, ...rs })
+      if (rs) this.renderer.writeSprite(c.color, c.engine.x, c.engine.y, rs.frameIdx, rs.animRow, rs.lowestRow)
     }
-    this.renderer.render(sprites, window.innerHeight)
+    this.renderer.endFrame()
     this.perf.renderMs = performance.now() - t1
 
     this.perf.catCount = this.cats.length

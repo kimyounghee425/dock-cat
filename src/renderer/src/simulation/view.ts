@@ -69,6 +69,7 @@ export class PetView {
     if (!this.anim) return
     this.acc += dt
     const step = 1 / this.anim.fps
+    if (this.acc < step) return
     while (this.acc >= step) {
       this.acc -= step
       this.frameIdx = (this.frameIdx + 1) % this.anim.frames
@@ -101,16 +102,16 @@ export class PetView {
   // 화면 렌더링은 WebGLRenderer가 담당하므로 여기선 측정만 한다.
   private updateContentBox(): void {
     if (!this.img || !this.anim) return
-    const F = this.frameSize
-    this.ctx.clearRect(0, 0, F, F)
-    this.ctx.drawImage(this.img, this.frameIdx * F, this.anim.row * F, F, F, 0, 0, F, F)
     const key = `${this.anim.row}:${this.frameIdx}`
     if (this.frameCache.has(key)) {
       this.contentBox = this.frameCache.get(key)!
-    } else {
-      this.measure()
-      this.frameCache.set(key, this.contentBox)
+      return
     }
+    const F = this.frameSize
+    this.ctx.clearRect(0, 0, F, F)
+    this.ctx.drawImage(this.img, this.frameIdx * F, this.anim.row * F, F, F, 0, 0, F, F)
+    this.measure()
+    this.frameCache.set(key, this.contentBox)
   }
 
   private measure(): void {
